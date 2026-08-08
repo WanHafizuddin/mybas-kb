@@ -2,21 +2,19 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, Tooltip, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { loadData, isServiceActive, timeToSeconds, getCurrentTimeSeconds, interpolatePositionOnShape, getNextArrival, getNextRouteTrip } from '../utils/gtfs';
+import { loadData, getCurrentTimeSeconds, getNextArrival, getNextRouteTrip } from '../utils/gtfs';
+import { useRealtimeVehicles } from '../hooks/useRealtimeVehicles';
 
 const KotaBharuCenter = [6.1256, 102.2386];
 
 export default function MapView() {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
+    const { vehicles: realVehicles, error: realtimeError, lastFetched: realtimeLastFetched } = useRealtimeVehicles();
 
-    // Default to current local time
-    const [currentTime, setCurrentTime] = useState(() => {
-        const now = new Date();
-        return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-    });
-    // Always playing, removed isPlaying state
-    const [simSpeed, setSimSpeed] = useState(1); // 1x speed default
+    // Real wall-clock time (seconds since midnight) -- only used to keep
+    // "next scheduled bus" predictions at stops/routes accurate as time passes.
+    const [currentTime, setCurrentTime] = useState(() => getCurrentTimeSeconds());
 
     useEffect(() => {
         loadData()
@@ -27,18 +25,11 @@ export default function MapView() {
             });
     }, []);
 
-    // Timer loop for simulation
     useEffect(() => {
-        const interval = setInterval(() => {
-            setCurrentTime(prev => {
-                const next = prev + simSpeed;
-                return next >= 86400 ? 0 : next; // Loop at midnight
-            });
-        }, 1000);
+        const interval = setInterval(() => setCurrentTime(getCurrentTimeSeconds()), 1000);
         return () => clearInterval(interval);
-    }, [simSpeed]);
+    }, []);
 
-    // Simulation Engine
     const routeShapes = useMemo(() => {
         if (!data) return [];
         const shapes = [];
@@ -62,75 +53,6 @@ export default function MapView() {
         });
         return shapes;
     }, [data]);
-
-    const activeTrips = useMemo(() => {
-        if (!data) return [];
-
-        const now = new Date();
-        const seconds = currentTime;
-        const active = [];
-
-        Object.keys(data.schedule).forEach(routeId => {
-            const routeTrips = data.schedule[routeId];
-            routeTrips.forEach(trip => {
-                // Check if trip runs today
-                if (!isServiceActive(trip.serviceId, data.calendar, now)) return;
-
-                const firstStop = trip.stops[0];
-                const lastStop = trip.stops[trip.stops.length - 1];
-
-                const startSec = timeToSeconds(firstStop.departure);
-                const endSec = timeToSeconds(lastStop.arrival);
-
-                if (seconds >= startSec && seconds <= endSec) {
-                    let currentSegment = null;
-                    for (let i = 0; i < trip.stops.length - 1; i++) {
-                        const s1 = trip.stops[i];
-                        const s2 = trip.stops[i + 1];
-                        const t1 = timeToSeconds(s1.departure);
-                        const t2 = timeToSeconds(s2.arrival);
-
-                        if (seconds >= t1 && seconds <= t2) {
-                            const progress = (seconds - t1) / (t2 - t1);
-                            currentSegment = { from: s1, to: s2, progress, type: 'moving' };
-                            break;
-                        } else if (seconds >= timeToSeconds(s1.arrival) && seconds < t1) {
-                            currentSegment = { stop: s1, type: 'dwelling' };
-                            break;
-                        }
-                    }
-
-                    if (currentSegment) {
-                        let position = null;
-                        if (currentSegment.type === 'dwelling') {
-                            const stop = data.stops[currentSegment.stop.stopId];
-                            if (stop) position = [stop.lat, stop.lon];
-                        } else {
-                            const stop1 = data.stops[currentSegment.from.stopId];
-                            const stop2 = data.stops[currentSegment.to.stopId];
-
-                            if (stop1 && stop2) {
-                                // Use shape-based interpolation if shape is available
-                                const shape = data.shapes[trip.shapeId];
-                                position = interpolatePositionOnShape(shape, stop1, stop2, currentSegment.progress);
-                            }
-                        }
-
-                        if (position) {
-                            active.push({
-                                ...trip,
-                                route: data.routes.find(r => r.id === routeId),
-                                position,
-                                status: currentSegment.type
-                            });
-                        }
-                    }
-                }
-            });
-        });
-        return active;
-
-    }, [currentTime, data]);
 
     if (error) return (
         <div className="flex items-center justify-center h-screen w-full bg-red-900 text-white p-4">
@@ -218,86 +140,70 @@ export default function MapView() {
                         </Polyline>
                     ))}
 
-                    {/* Draw Active Buses */}
-                    {activeTrips.map((trip, idx) => {
-                        const busIcon = new L.DivIcon({
-                            className: 'custom-bus-icon',
-                            html: `<div style="background-color: ${trip.route.color}; boarder: 2px solid white; border-radius: 4px; padding: 2px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M8 6v6"/>
-                                        <path d="M15 6v6"/>
-                                        <path d="M2 12h19.6"/>
-                                        <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/>
-                                        <circle cx="7" cy="18" r="2"/>
-                                        <path d="M9 18h5"/>
-                                        <circle cx="16" cy="18" r="2"/>
-                                    </svg>
+                    {/* Draw Real GPS-Tracked Buses (from realtime/api.py) */}
+                    {realVehicles.map(v => {
+                        const reportedAt = new Date(v.vehicle_timestamp || v.collected_at);
+                        const ageMinutes = (Date.now() - reportedAt.getTime()) / 60000;
+                        const isStale = ageMinutes > 5;
+                        const dotColor = isStale ? '#6b7280' : '#22c55e'; // gray if stale, green if fresh
+
+                        const liveIcon = new L.DivIcon({
+                            className: 'custom-live-bus-icon',
+                            html: `<div style="position: relative; width: 26px; height: 26px;">
+                                    ${isStale ? '' : `<div style="position: absolute; inset: 0; border-radius: 9999px; background-color: ${dotColor}; opacity: 0.4; animation: pulse-ring 1.6s ease-out infinite;"></div>`}
+                                    <div style="position: relative; background-color: ${dotColor}; border: 2px solid white; border-radius: 9999px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.4);">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
+                                            <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/>
+                                            <circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>
+                                        </svg>
+                                    </div>
                                    </div>`,
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 12]
+                            iconSize: [26, 26],
+                            iconAnchor: [13, 13]
                         });
 
                         return (
                             <Marker
-                                key={`${trip.tripId}-${idx}`}
-                                position={trip.position}
-                                icon={busIcon}
+                                key={`real-${v.vehicle_id || v.entity_id}`}
+                                position={[v.latitude, v.longitude]}
+                                icon={liveIcon}
                             >
                                 <Popup>
-                                    <div className="p-1">
-                                        <div className="text-sm font-bold text-gray-900">{trip.route.shortName}</div>
-                                        <div className="text-xs text-gray-600 truncate max-w-[150px]">{trip.headsign}</div>
-                                        <div className="text-xs mt-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 inline-block capitalize">{trip.status}</div>
+                                    <div className="p-1 min-w-[140px]">
+                                        <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
+                                            {v.vehicle_label || v.vehicle_id}
+                                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Live GPS</span>
+                                        </div>
+                                        {v.license_plate && <div className="text-xs text-gray-600">Plate: {v.license_plate}</div>}
+                                        <div className={`text-xs mt-1 ${isStale ? 'text-gray-500' : 'text-green-600 font-semibold'}`}>
+                                            {isStale
+                                                ? `Last seen ${Math.round(ageMinutes)} min ago — likely idle`
+                                                : `Updated ${Math.round(ageMinutes)} min ago`}
+                                        </div>
+                                        {!v.trip_id && (
+                                            <div className="text-xs text-gray-400 italic mt-0.5">No trip assigned (feed doesn't report one yet)</div>
+                                        )}
                                     </div>
                                 </Popup>
                             </Marker>
-                        )
+                        );
                     })}
                 </MapContainer>
             </div>
 
-            {/* Simulation Controls Overlay */}
-            <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white p-4 rounded-xl shadow-2xl z-[9999] w-[90%] max-w-md border border-slate-700">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-mono text-blue-400">
-                        {new Date(currentTime * 1000).toISOString().substr(11, 8)}
+            {/* Realtime connection status badge */}
+            <div className="fixed top-6 right-6 z-[9999] glass-panel px-3 py-1.5 rounded-lg shadow-lg text-xs border border-slate-700/50">
+                {realtimeError ? (
+                    <span className="text-red-400">&#9888; Realtime API unreachable</span>
+                ) : (
+                    <span className="text-gray-200">
+                        <span className="text-green-500">&#9679;</span> {realVehicles.length} live vehicle{realVehicles.length === 1 ? '' : 's'}
+                        {realtimeLastFetched && (
+                            <span className="text-gray-500"> &middot; updated {realtimeLastFetched.toLocaleTimeString()}</span>
+                        )}
                     </span>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => {
-                                const now = new Date();
-                                setCurrentTime(now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds());
-                                setSimSpeed(1); // Reset speed to normal
-                            }}
-                            className="px-3 py-1 rounded-md text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-                        >
-                            LIVE NOW
-                        </button>
-                        <select
-                            value={simSpeed}
-                            onChange={(e) => setSimSpeed(Number(e.target.value))}
-                            className="bg-slate-800 border-none text-xs rounded px-2 outline-none"
-                        >
-                            <option value={1}>1x</option>
-                            <option value={10}>10x</option>
-                            <option value={60}>1m/s</option>
-                            <option value={600}>10m/s</option>
-                        </select>
-                    </div>
-                </div>
-                <input
-                    type="range"
-                    min="0"
-                    max="86400"
-                    value={currentTime}
-                    onChange={(e) => setCurrentTime(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                />
-                <div className="flex justify-between text-[10px] text-gray-500 mt-1 font-mono">
-                    <span>00:00</span>
-                    <span>12:00</span>
-                    <span>23:59</span>
-                </div>
+                )}
             </div>
 
             {/* Route Legend */}

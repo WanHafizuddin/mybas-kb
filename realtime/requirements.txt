@@ -1,0 +1,7 @@
+requests>=2.32
+gtfs-realtime-bindings>=2.2
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+python-dotenv>=1.0
+fastapi>=0.116
+uvicorn>=0.35
