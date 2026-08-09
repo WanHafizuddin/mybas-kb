@@ -183,8 +183,16 @@ def main():
             except requests.RequestException as exc:
                 log.error("feed fetch failed: %s", exc)
             except psycopg.Error as exc:
-                log.error("database error: %s", exc)
-                conn.rollback()
+                log.error("database error: %s -- reconnecting", exc)
+                try:
+                    conn.close()  # best-effort; connection may already be dead
+                except Exception:
+                    pass
+                try:
+                    conn = psycopg.connect(database_url)
+                    log.info("reconnected to database")
+                except psycopg.Error as reconnect_exc:
+                    log.error("reconnect failed: %s -- will retry next poll", reconnect_exc)
 
             iterations += 1
             if args.once or (args.max_iterations and iterations >= args.max_iterations):
