@@ -59,6 +59,34 @@ function parseCSV(filePath) {
     });
 }
 
+// Guards against silently overwriting good public/data/*.json with a broken
+// or truncated upstream download -- this has already happened once (the
+// operator's GTFS export briefly contained header-only CSVs with zero rows).
+function assertNotSuspiciouslySmaller(newRoutes, newStops) {
+    const routesPath = path.join(DATA_DIR, 'routes.json');
+    const stopsPath = path.join(DATA_DIR, 'stops.json');
+    if (!fs.existsSync(routesPath) || !fs.existsSync(stopsPath)) return; // first run, nothing to compare
+
+    const existingRoutes = JSON.parse(fs.readFileSync(routesPath, 'utf-8'));
+    const existingStops = JSON.parse(fs.readFileSync(stopsPath, 'utf-8'));
+
+    const checks = [
+        { name: 'routes', existing: existingRoutes.length, incoming: newRoutes.length },
+        { name: 'stops', existing: Object.keys(existingStops).length, incoming: newStops.length },
+    ];
+
+    for (const { name, existing, incoming } of checks) {
+        if (existing === 0) continue; // nothing worth protecting
+        if (incoming === 0 || incoming < existing / 2) {
+            throw new Error(
+                `Refusing to overwrite public/data/*.json: new ${name} count (${incoming}) is suspiciously ` +
+                `smaller than the existing count (${existing}). This usually means the upstream GTFS feed is ` +
+                `currently broken or incomplete, not that the local data is stale. Aborting without writing any files.`
+            );
+        }
+    }
+}
+
 async function processGTFS() {
     try {
         console.log('Downloading GTFS data...');
@@ -76,6 +104,8 @@ async function processGTFS() {
         const shapes = await parseCSV(path.join(TEMP_DIR, 'shapes.txt'));
         const stopTimes = await parseCSV(path.join(TEMP_DIR, 'stop_times.txt'));
         const calendar = await parseCSV(path.join(TEMP_DIR, 'calendar.txt'));
+
+        assertNotSuspiciouslySmaller(routes, stops);
 
         // 1. Process Stops
         console.log('Processing stops...');

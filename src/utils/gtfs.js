@@ -14,7 +14,26 @@ export async function loadData() {
     // Pre-calculate schedules for each stop
     const stopSchedules = precalculateStopSchedules(schedule, coloredRoutes, calendar);
 
-    return { routes: coloredRoutes, stops, shapes, schedule, calendar, stopSchedules };
+    // Pre-calculate trip_id -> route lookup, so real-time vehicle positions
+    // (which only ever carry trip_id, never route_id) can be matched to a route.
+    const tripIndex = buildTripIndex(schedule, coloredRoutes);
+
+    return { routes: coloredRoutes, stops, shapes, schedule, calendar, stopSchedules, tripIndex };
+}
+
+// Helper: Build a map of tripId -> { route, headsign }. The GTFS-Realtime
+// feed reports trip_id during active service but never route_id directly
+// (confirmed by inspecting the live feed) -- this is how we recover it.
+function buildTripIndex(schedule, routes) {
+    const index = {};
+    Object.keys(schedule).forEach(routeId => {
+        const route = routes.find(r => r.id === routeId);
+        if (!route) return;
+        schedule[routeId].forEach(trip => {
+            index[trip.tripId] = { route, headsign: trip.headsign };
+        });
+    });
+    return index;
 }
 
 // Helper: Build a map of stopId -> sorted array of arrivals

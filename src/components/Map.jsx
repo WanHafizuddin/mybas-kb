@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, Tooltip, Marker } from 'react-leaflet';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Circle, Popup, Tooltip, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { loadData, getCurrentTimeSeconds, getNextArrival, getNextRouteTrip } from '../utils/gtfs';
 import { useRealtimeVehicles } from '../hooks/useRealtimeVehicles';
+import { useGeolocation } from '../hooks/useGeolocation';
 
 const KotaBharuCenter = [6.1256, 102.2386];
 
@@ -11,6 +12,8 @@ export default function MapView() {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const { vehicles: realVehicles, error: realtimeError, lastFetched: realtimeLastFetched } = useRealtimeVehicles();
+    const { position: myPosition, error: geoError } = useGeolocation();
+    const mapRef = useRef(null);
 
     // Real wall-clock time (seconds since midnight) -- only used to keep
     // "next scheduled bus" predictions at stops/routes accurate as time passes.
@@ -70,6 +73,7 @@ export default function MapView() {
         <div className="w-full h-full relative isolate">
             <div className="absolute inset-0 z-0">
                 <MapContainer
+                    ref={mapRef}
                     center={KotaBharuCenter}
                     zoom={13}
                     scrollWheelZoom={true}
@@ -145,7 +149,13 @@ export default function MapView() {
                         const reportedAt = new Date(v.vehicle_timestamp || v.collected_at);
                         const ageMinutes = (Date.now() - reportedAt.getTime()) / 60000;
                         const isStale = ageMinutes > 5;
-                        const dotColor = isStale ? '#6b7280' : '#22c55e'; // gray if stale, green if fresh
+                        // Feed gives trip_id but never route_id -- resolve the route via the
+                        // static schedule's trip_id -> route lookup (data.tripIndex).
+                        const tripInfo = v.trip_id ? data.tripIndex[v.trip_id] : null;
+                        // Fallback (unresolved route) uses amber -- the route palette in gtfs.js
+                        // only assigns Red/Blue/Green/Orange/Purple/Cyan/Pink/Indigo to the 8
+                        // current routes, so amber/yellow never collides with an actual route line.
+                        const dotColor = isStale ? '#6b7280' : (tripInfo ? tripInfo.route.color : '#eab308');
 
                         const liveIcon = new L.DivIcon({
                             className: 'custom-live-bus-icon',
@@ -173,15 +183,22 @@ export default function MapView() {
                                     <div className="p-1 min-w-[140px]">
                                         <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
                                             {v.vehicle_label || v.vehicle_id}
-                                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Live GPS</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Live GPS</span>
                                         </div>
                                         {v.license_plate && <div className="text-xs text-gray-600">Plate: {v.license_plate}</div>}
-                                        <div className={`text-xs mt-1 ${isStale ? 'text-gray-500' : 'text-green-600 font-semibold'}`}>
+                                        <div className={`text-xs mt-1 ${isStale ? 'text-gray-500' : 'text-amber-600 font-semibold'}`}>
                                             {isStale
                                                 ? `Last seen ${Math.round(ageMinutes)} min ago — likely idle`
                                                 : `Updated ${Math.round(ageMinutes)} min ago`}
                                         </div>
-                                        {!v.trip_id && (
+                                        {tripInfo ? (
+                                            <div className="text-xs mt-1 pt-1 border-t border-gray-100">
+                                                <span className="font-bold" style={{ color: tripInfo.route.color }}>{tripInfo.route.shortName}</span>
+                                                <span className="text-gray-600"> &middot; {tripInfo.headsign}</span>
+                                            </div>
+                                        ) : v.trip_id ? (
+                                            <div className="text-xs text-gray-400 italic mt-0.5">Trip {v.trip_id} not in static schedule</div>
+                                        ) : (
                                             <div className="text-xs text-gray-400 italic mt-0.5">No trip assigned (feed doesn't report one yet)</div>
                                         )}
                                     </div>
@@ -189,8 +206,54 @@ export default function MapView() {
                             </Marker>
                         );
                     })}
+
+                    {/* Draw "You Are Here" -- the browser's own GPS position */}
+                    {myPosition && (
+                        <>
+                            <Circle
+                                center={[myPosition.lat, myPosition.lon]}
+                                radius={myPosition.accuracy}
+                                pathOptions={{ color: '#8b5cf6', fillColor: '#8b5cf6', fillOpacity: 0.1, weight: 1 }}
+                            />
+                            <Marker
+                                position={[myPosition.lat, myPosition.lon]}
+                                icon={new L.DivIcon({
+                                    className: 'custom-my-location-icon',
+                                    html: `<div style="position: relative; width: 20px; height: 20px;">
+                                            <div style="position: absolute; inset: 0; border-radius: 9999px; background-color: #8b5cf6; opacity: 0.4; animation: pulse-ring 1.6s ease-out infinite;"></div>
+                                            <div style="position: relative; background-color: #8b5cf6; border: 2px solid white; border-radius: 9999px; width: 20px; height: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.4);"></div>
+                                           </div>`,
+                                    iconSize: [20, 20],
+                                    iconAnchor: [10, 10]
+                                })}
+                            >
+                                <Popup>
+                                    <div className="text-xs font-semibold text-gray-900">You are here</div>
+                                    <div className="text-[10px] text-gray-500">Accuracy: &plusmn;{Math.round(myPosition.accuracy)}m</div>
+                                </Popup>
+                            </Marker>
+                        </>
+                    )}
                 </MapContainer>
             </div>
+
+            {/* Locate Me button -- sits below Leaflet's built-in zoom controls */}
+            <button
+                onClick={() => {
+                    if (myPosition && mapRef.current) {
+                        mapRef.current.flyTo([myPosition.lat, myPosition.lon], 16);
+                    }
+                }}
+                disabled={!myPosition}
+                title={myPosition ? 'Center on my location' : (geoError || 'Locating…')}
+                className="fixed z-[9999] flex items-center justify-center w-[34px] h-[34px] rounded-md shadow-lg glass-panel border border-slate-700/50 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/10 transition-colors"
+                style={{ top: '96px', left: '10px' }}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={myPosition ? '#8b5cf6' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                </svg>
+            </button>
 
             {/* Realtime connection status badge */}
             <div className="fixed top-6 right-6 z-[9999] glass-panel px-3 py-1.5 rounded-lg shadow-lg text-xs border border-slate-700/50">
