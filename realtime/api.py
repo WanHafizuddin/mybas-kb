@@ -12,11 +12,12 @@ Run:
 Then browse http://localhost:8000/docs for interactive API docs.
 """
 
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
@@ -24,14 +25,15 @@ from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
 
 ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ENV_PATH)  # local dev only -- in production DATABASE_URL is injected directly
 
 
 def get_database_url() -> str:
-    values = dotenv_values(ENV_PATH)
-    url = values.get("DATABASE_URL")
+    url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError(
-            f"DATABASE_URL not found in {ENV_PATH}. Copy .env.example to .env and fill it in."
+            f"DATABASE_URL not set. Locally: copy {ENV_PATH.name}.example to {ENV_PATH.name} and fill it "
+            "in. In production: set it as an environment variable on the host."
         )
     return url
 
@@ -49,11 +51,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BAS.MY Kota Bharu Realtime API", lifespan=lifespan)
 
-# Read-only public data (bus positions) -- any localhost dev port can read it.
-# Tighten this to the real frontend origin once it's deployed somewhere.
+# Read-only public data (bus positions) -- fine to allow broadly. Covers local
+# dev (any localhost port) plus the two deployed frontends.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+"
+    r"|https://kb-mybastracker-simulatedlive\.onrender\.com"
+    r"|https://kb-my-bas-tracker-simulated-live\.vercel\.app",
     allow_methods=["GET"],
     allow_headers=["*"],
 )

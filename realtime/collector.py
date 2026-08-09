@@ -16,17 +16,19 @@ vehicle_positions table (see schema.sql).
 
 import argparse
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
 import requests
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from google.transit import gtfs_realtime_pb2
 
 FEED_URL = "https://api.data.gov.my/gtfs-realtime/vehicle-position/mybas-kota-bharu"
 ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ENV_PATH)  # local dev only -- in production DATABASE_URL is injected directly
 
 # Loose bounding box around Kelantan/Kota Bharu. Positions outside this are
 # logged as a warning (data quality signal worth keeping) but still stored --
@@ -39,11 +41,11 @@ log = logging.getLogger("collector")
 
 
 def get_database_url() -> str:
-    values = dotenv_values(ENV_PATH)
-    url = values.get("DATABASE_URL")
+    url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError(
-            f"DATABASE_URL not found in {ENV_PATH}. Copy .env.example to .env and fill it in."
+            f"DATABASE_URL not set. Locally: copy {ENV_PATH.name}.example to {ENV_PATH.name} and fill it "
+            "in. In production: set it as an environment variable on the host."
         )
     return url
 
