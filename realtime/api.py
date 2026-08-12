@@ -95,16 +95,38 @@ def health():
 
 
 @app.get("/vehicles/current", response_model=list[VehiclePosition])
-def current_vehicles():
-    """Latest known position for every vehicle seen at least once."""
+def current_vehicles(
+    max_age_minutes: int = Query(
+        default=15,
+        ge=1,
+        le=1440,
+        description="Only return vehicles whose latest position was collected within "
+        "this many minutes. Bounds the result to recently-active buses.",
+    ),
+):
+    """Latest known position for every vehicle collected within the recency window.
+
+    Without a window this returns the last-known position of every vehicle ever
+    seen, so buses that ran earlier and parked pile up as stale grey markers on
+    the map (the frontend greys anything older than 5 min). The window bounds the
+    result to vehicles active in the last `max_age_minutes`. Recently-idle buses
+    (5..max_age_minutes old) still come through and render grey; older ghosts are
+    dropped entirely.
+
+    Freshness is measured by `collected_at` (when our collector polled), not
+    `vehicle_timestamp` -- the latter can lag or be null while a bus idles, so it
+    is not a reliable "did we still see this bus" signal.
+    """
     with pool.connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             SELECT DISTINCT ON (vehicle_id) *
             FROM vehicle_positions
             WHERE vehicle_id IS NOT NULL
+              AND collected_at > now() - %(max_age_minutes)s * interval '1 minute'
             ORDER BY vehicle_id, collected_at DESC
-            """
+            """,
+            {"max_age_minutes": max_age_minutes},
         )
         return cur.fetchall()
 
