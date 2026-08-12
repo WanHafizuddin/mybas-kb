@@ -120,6 +120,33 @@ button {
   }
 }
 
+/* Leaflet gives .leaflet-div-icon a white box + grey border by default; the
+   isometric bus SVG is partially transparent, so strip that or it shows through. */
+.custom-live-bus-icon {
+  background: transparent;
+  border: none;
+}
+
+/* Ground-level "alive" pulse for fresh buses: an ellipse that expands from its
+   own center at the bus's shadow point. fill-box keeps the origin on the ellipse. */
+.live-bus-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse-ground 1.7s ease-out infinite;
+}
+
+@keyframes pulse-ground {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

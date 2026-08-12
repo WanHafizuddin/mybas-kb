@@ -8,6 +8,20 @@ import { useGeolocation } from '../hooks/useGeolocation';
 
 const KotaBharuCenter = [6.1256, 102.2386];
 
+// Lighten (pct>0) or darken (pct<0) a #rrggbb hex toward white/black by pct percent.
+// Used to derive the lit roof (lighter) and shaded front (darker) faces of the
+// isometric live-bus marker from its single base color, so the route-color theming
+// stays a one-value input (route color / amber / grey, decided below).
+function shade(hex, pct) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const t = pct < 0 ? 0 : 255, p = Math.abs(pct) / 100;
+    r = Math.round((t - r) * p) + r;
+    g = Math.round((t - g) * p) + g;
+    b = Math.round((t - b) * p) + b;
+    return '#' + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+}
+
 export default function MapView() {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
@@ -157,20 +171,37 @@ export default function MapView() {
                         // current routes, so amber/yellow never collides with an actual route line.
                         const dotColor = isStale ? '#6b7280' : (tripInfo ? tripInfo.route.color : '#eab308');
 
+                        // Isometric 3/4-view bus, themed from the single `dotColor`:
+                        // side = base, roof = lighter (lit from above), front = darker.
+                        // Fresh buses get a pulsing ground ellipse; stale ones just the
+                        // static shadow (matches the old "no pulse when stale" behavior).
+                        const roof = shade(dotColor, 20);
+                        const front = shade(dotColor, -18);
+                        const door = shade(dotColor, -8);
+                        const edge = shade(dotColor, -30);
+                        const pulse = isStale ? '' : `<ellipse class="live-bus-pulse" cx="34" cy="53" rx="18" ry="3" fill="${dotColor}" />`;
+
                         const liveIcon = new L.DivIcon({
                             className: 'custom-live-bus-icon',
-                            html: `<div style="position: relative; width: 26px; height: 26px;">
-                                    ${isStale ? '' : `<div style="position: absolute; inset: 0; border-radius: 9999px; background-color: ${dotColor}; opacity: 0.4; animation: pulse-ring 1.6s ease-out infinite;"></div>`}
-                                    <div style="position: relative; background-color: ${dotColor}; border: 2px solid white; border-radius: 9999px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.4);">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
-                                            <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/>
-                                            <circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>
-                                        </svg>
-                                    </div>
-                                   </div>`,
-                            iconSize: [26, 26],
-                            iconAnchor: [13, 13]
+                            html: `<svg viewBox="0 0 72 60" width="44" height="37" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
+                                    ${pulse}
+                                    <ellipse cx="34" cy="53" rx="24" ry="3.6" fill="#000" opacity="0.22" />
+                                    <rect x="10" y="22" width="42" height="22" rx="4" fill="${dotColor}" />
+                                    <polygon points="10,22 52,22 61,16 19,16" fill="${roof}" />
+                                    <polygon points="52,22 61,16 61,38 52,44" fill="${front}" />
+                                    <rect x="14" y="26" width="24" height="6.5" rx="1.5" fill="#e6f0fa" opacity="0.95" />
+                                    <line x1="22" y1="26" x2="22" y2="32.5" stroke="${dotColor}" stroke-width="1" />
+                                    <line x1="30" y1="26" x2="30" y2="32.5" stroke="${dotColor}" stroke-width="1" />
+                                    <rect x="41" y="27" width="7" height="13" rx="1" fill="${door}" />
+                                    <line x1="44.5" y1="27" x2="44.5" y2="40" stroke="${edge}" stroke-width="0.8" />
+                                    <ellipse cx="20" cy="45" rx="4.2" ry="4.2" fill="#1f2937" />
+                                    <ellipse cx="20" cy="45" rx="1.6" ry="1.6" fill="#9ca3af" />
+                                    <ellipse cx="43" cy="45" rx="4.2" ry="4.2" fill="#1f2937" />
+                                    <ellipse cx="43" cy="45" rx="1.6" ry="1.6" fill="#9ca3af" />
+                                    <circle cx="57.5" cy="34" r="1.8" fill="#fde68a" />
+                                   </svg>`,
+                            iconSize: [44, 37],
+                            iconAnchor: [21, 33]
                         });
 
                         return (
