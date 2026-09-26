@@ -295,7 +295,7 @@ export default function MapView() {
                     <span className="text-gray-200">
                         <span className="text-green-500">&#9679;</span> {realVehicles.length} live vehicle{realVehicles.length === 1 ? '' : 's'}
                         {realtimeLastFetched && (
-                            <span className="text-gray-500"> &middot; updated {realtimeLastFetched.toLocaleTimeString()}</span>
+                            <span className="text-slate-300"> &middot; updated {realtimeLastFetched.toLocaleTimeString()}</span>
                         )}
                     </span>
                 )}
@@ -306,7 +306,7 @@ export default function MapView() {
                 <div className="fixed bottom-4 right-4 z-[9999] glass-panel p-4 rounded-xl shadow-2xl max-h-[40vh] overflow-y-auto w-[320px] border border-slate-700/50">
                     <h3 className="text-white font-bold mb-2 text-sm border-b border-gray-600 pb-1 flex justify-between items-center">
                         Route Guide
-                        <span className="text-[10px] text-gray-400 font-normal">{data.routes.length} Routes</span>
+                        <span className="text-xs text-slate-200 font-normal">{data.routes.length} Routes</span>
                     </h3>
                     <div className="space-y-2">
                         {data.routes.map(route => (
@@ -320,7 +320,7 @@ export default function MapView() {
                                         <span className="text-gray-200 font-bold group-hover:text-white transition-colors whitespace-nowrap min-w-[30px]">
                                             {route.shortName}
                                         </span>
-                                        <span className="text-gray-400 text-[10px] leading-tight group-hover:text-gray-300 transition-colors pt-0.5">
+                                        <span className="text-slate-200 text-xs leading-tight group-hover:text-white transition-colors pt-0.5">
                                             {route.longName}
                                         </span>
                                     </div>
@@ -328,7 +328,7 @@ export default function MapView() {
                                         const nextTrip = getNextRouteTrip(route.id, data.schedule, data.calendar, currentTime);
                                         if (nextTrip) {
                                             return (
-                                                <div className="flex items-center gap-3 mt-1 text-[10px] font-mono border-t border-white/5 pt-1 w-full text-gray-400">
+                                                <div className="flex items-center gap-3 mt-1 text-xs font-mono border-t border-slate-600 pt-1 w-full text-slate-200">
                                                     <span className="flex items-center gap-1">
                                                         <span className="w-1 h-1 rounded-full bg-green-500"></span>
                                                         Dep: <span className="text-gray-200">{nextTrip.startTime}</span>
@@ -341,7 +341,7 @@ export default function MapView() {
                                             );
                                         } else {
                                             return (
-                                                <div className="mt-1 text-[10px] text-gray-500 italic border-t border-white/5 pt-1">
+                                                <div className="mt-1 text-xs text-slate-300 italic border-t border-slate-600 pt-1">
                                                     End of Service
                                                 </div>
                                             );

@@ -14,7 +14,7 @@
   --text: #f8fafc;
   --text-muted: #94a3b8;
   --border: #334155;
-  --glass: rgba(30, 41, 59, 0.7);
+  --glass: #0f172a;
 }
 
 * {
@@ -72,8 +72,6 @@ body {
 /* Glassmorphism Utilities */
 .glass-panel {
   background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
