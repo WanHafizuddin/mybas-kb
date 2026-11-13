@@ -27,7 +27,7 @@ variable "bucket_name" {
 variable "repo_url" {
   description = "HTTPS git URL the VM clones the collector from. Must be readable without credentials (public repo)."
   type        = string
-  default     = "https://github.com/WanHafizuddin/KB-MyBasTracker-SimulatedLive.git"
+  default     = "https://github.com/WanHafizuddin/mybas-kb.git"
 }
 
 variable "repo_ref" {
