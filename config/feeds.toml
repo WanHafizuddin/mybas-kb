@@ -1,0 +1,21 @@
+# GTFS-Realtime vehicle-position feeds polled by collector/.
+#
+# Each feed's URL is base_url + path. `agency` becomes the GCS partition
+# (raw/vehicle_positions/agency=<agency>/...), so never rename an agency once
+# data has been collected under it -- add a new entry instead.
+# Allowed agency characters: lowercase letters, digits, '-'.
+
+base_url = "https://api.data.gov.my/gtfs-realtime/vehicle-position/"
+
+[[feeds]]
+agency = "mybas-kota-bharu"
+path = "mybas-kota-bharu"
+
+# Other data.gov.my feeds work the same way; add them later if needed:
+# [[feeds]]
+# agency = "rapid-bus-kl"
+# path = "prasarana?category=rapid-bus-kl"
+#
+# [[feeds]]
+# agency = "rapid-bus-penang"
+# path = "prasarana?category=rapid-bus-penang"

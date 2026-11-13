@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "basmy"
+version = "0.1.0"
+description = "Shared GTFS-Realtime code and always-on collector for the bas.my data platform"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+    "gtfs-realtime-bindings>=2.2",
+]
+
+[project.optional-dependencies]
+collector = ["google-cloud-storage>=2.18"]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["basmy*", "collector*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

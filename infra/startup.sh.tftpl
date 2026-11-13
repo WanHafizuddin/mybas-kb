@@ -1,0 +1,73 @@
+#!/bin/bash
+# GCE startup script for the bas.my raw collector. Runs as root on EVERY boot
+# and is idempotent: a reboot pulls the latest ${repo_ref} and restarts the
+# service. Rendered by Terraform (templatefile), so literal shell braces are
+# avoided below.
+set -euo pipefail
+
+APP_ROOT=/opt/basmy
+APP=$APP_ROOT/app
+VENV=$APP_ROOT/venv
+REPO_URL="${repo_url}"
+REPO_REF="${repo_ref}"
+BUCKET="${bucket}"
+
+log() { echo "basmy-startup: $*"; }
+
+# 1 GB swap: the e2-micro has 1 GB RAM and pip installs can spike past it.
+if ! swapon --show | grep -q /swapfile; then
+  if [ ! -f /swapfile ]; then
+    log "creating 1G swapfile"
+    fallocate -l 1G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+  fi
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+# Cap journald so logs can never fill the 30 GB disk.
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=500M\n' > /etc/systemd/journald.conf.d/basmy.conf
+systemctl restart systemd-journald
+
+log "installing packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q git python3-venv python3-pip
+
+id basmy >/dev/null 2>&1 || useradd --system --home-dir "$APP_ROOT" --shell /usr/sbin/nologin basmy
+mkdir -p "$APP_ROOT"
+
+log "fetching $REPO_URL @ $REPO_REF"
+if [ -d "$APP/.git" ]; then
+  git -C "$APP" fetch --depth 1 origin "$REPO_REF"
+  git -C "$APP" checkout -q -B "$REPO_REF" FETCH_HEAD
+else
+  git clone -q --depth 1 --branch "$REPO_REF" "$REPO_URL" "$APP"
+fi
+
+log "installing collector into $VENV"
+[ -x "$VENV/bin/python" ] || python3 -m venv "$VENV"
+"$VENV/bin/pip" install -q --upgrade pip
+"$VENV/bin/pip" install -q -r "$APP/collector/requirements.txt"
+"$VENV/bin/pip" install -q --no-deps -e "$APP"
+chown -R basmy:basmy "$APP_ROOT"
+
+log "writing /etc/basmy-collector.env"
+cat > /etc/basmy-collector.env <<EOF
+BASMY_SINK=gcs
+BASMY_BUCKET=$BUCKET
+BASMY_FEEDS_CONFIG=$APP/config/feeds.toml
+BASMY_SPOOL_DIR=/var/lib/basmy-collector/spool
+BASMY_HEALTH_FILE=/var/lib/basmy-collector/health.json
+EOF
+chmod 644 /etc/basmy-collector.env
+
+install -m 644 "$APP/collector/basmy-collector.service" /etc/systemd/system/basmy-collector.service
+systemctl daemon-reload
+systemctl enable basmy-collector.service
+# restart (not start): on reboot-with-new-code this picks up the new checkout.
+# The running collector gets SIGTERM first, so it flushes its spool.
+systemctl restart basmy-collector.service
+log "done"

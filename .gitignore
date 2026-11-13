@@ -29,3 +29,22 @@ realtime/collector.log
 *.njsproj
 *.sln
 *.sw?
+
+# Data platform (collector, infra)
+spool/
+out/
+health.json
+*.egg-info/
+.pytest_cache/
+# Terraform: never commit state, plans, provider caches or real tfvars
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+infra/terraform.tfvars
+*.auto.tfvars
+# Never commit credentials
+*-key.json
+*.pem
+service-account*.json

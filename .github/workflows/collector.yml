@@ -15,6 +15,9 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
         working-directory: realtime
+      # collector.py imports its fetch/parse logic from the shared basmy
+      # package at the repo root.
+      - run: pip install -e .
       - run: python collector.py --once
         working-directory: realtime
         env:
