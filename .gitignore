@@ -48,3 +48,9 @@ infra/terraform.tfvars
 *-key.json
 *.pem
 service-account*.json
+# Generated datasets (GTFS snapshots in data/gtfs_static ARE committed)
+data/synthetic/
+data/real/
+spark-warehouse/
+metastore_db/
+derby.log

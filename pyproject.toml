@@ -14,10 +14,11 @@ dependencies = [
 
 [project.optional-dependencies]
 collector = ["google-cloud-storage>=2.18"]
+transform = ["pyspark==4.0.1", "pandas>=2.2", "pyarrow>=17"]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["basmy*", "collector*"]
+include = ["basmy*", "collector*", "transform*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
