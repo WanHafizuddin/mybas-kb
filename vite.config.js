@@ -7,5 +7,10 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: ['kb-mybastracker-simulatedlive.onrender.com']
+  },
+  // `npm test` (vitest). Only *.test.jsx under src/; not part of the build.
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.{js,jsx}'],
   }
 })

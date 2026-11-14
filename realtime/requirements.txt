@@ -5,3 +5,10 @@ psycopg-pool>=3.2
 python-dotenv>=1.0
 fastapi>=0.116
 uvicorn>=0.35
+# Phase 5 (/predict-delay): the shared basmy/ml packages from the repo root
+# and XGBoost CPU-only (much smaller than the full wheel; no pandas needed).
+# Paths are relative to this folder: install from realtime/ (as Render and
+# the collector workflow do).
+-e ..
+numpy>=1.26
+xgboost-cpu>=3.0,<4

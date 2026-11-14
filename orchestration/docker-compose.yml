@@ -32,6 +32,11 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
+    # DATABASE_URL (Supabase) for the prediction monitor, from your local,
+    # gitignored realtime/.env. Optional: without it the monitor task skips.
+    env_file:
+      - path: ../realtime/.env
+        required: false
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow

@@ -150,3 +150,17 @@ def read_bigquery(project: str, dataset: str) -> WarehouseFrames:
         stops=q(f"select stop_id, weather_point_id from {d}.dim_stop"),
         weather=q(f"select point_id, hour_utc, temperature_c, precipitation_mm from {d}.stg_weather_hourly"),
     )
+
+
+def route_hour_lookup(table: pd.DataFrame, window_days: int = ROUTE_HOUR_WINDOW_DAYS) -> dict[str, dict[str, float]]:
+    """Mean delay (minutes) per route and scheduled local hour over the last
+    `window_days` service dates of the table. Exported with each model so
+    serving can fill route_hour_avg_delay_2w_min without the warehouse:
+    {route_id: {"<hour>": minutes}}."""
+    last = max(table["service_date"])
+    recent = table[pd.to_datetime(table["service_date"]) > pd.Timestamp(last) - pd.Timedelta(days=window_days)]
+    means = recent.groupby(["route_id", "hour"], observed=True)[LABEL].mean()
+    out: dict[str, dict[str, float]] = {}
+    for (route, hour), value in means.items():
+        out.setdefault(str(route), {})[str(int(hour))] = round(float(value), 4)
+    return out

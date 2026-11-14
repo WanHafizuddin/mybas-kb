@@ -38,7 +38,7 @@ uvicorn api:app --reload --port 8000   # REST API over collected data
 ```
 Both `collector.py` and `api.py` read `DATABASE_URL` from `realtime/.env` (see `.env.example`; not committed).
 
-There is no test suite in this repo yet.
+Tests: `pytest` (Python, from the repo root) and `npm test` (frontend, vitest).
 
 ## Architecture
 
@@ -59,8 +59,15 @@ data.gov.my GTFS-Realtime (protobuf) -> collector.py -> Postgres (Supabase, vehi
   (never overwrites) — the table is meant to accumulate history for future ETA/delay modeling. On any
   `psycopg.Error` it closes and reopens the connection rather than assuming `rollback()` is safe; a dead
   connection (laptop sleep, network drop) must not permanently kill the process.
-- `api.py` is intentionally minimal: `/vehicles/current` (latest position per vehicle) and
-  `/vehicles/{vehicle_id}/history`. It does not expose trip/route/ETA endpoints.
+- `api.py` serves `/vehicles/current` (latest position per vehicle), `/vehicles/{vehicle_id}/history`,
+  and `/predict-delay?route_id=&stop_id=` (Phase 5, see `realtime/PREDICT.md`). The prediction endpoint
+  falls back model -> bus's live delay -> timetable and must never fail because a model is missing; it
+  needs the repo-root `basmy`/`ml` packages (`requirements.txt` installs them with `-e ..`, so install
+  from `realtime/`). Predictions are logged to the `delay_predictions` table (`schema_predictions.sql`).
+- The data-platform phases live outside `realtime/`: `collector/` + `infra/` (always-on GCE VM collectors),
+  `transform/` (PySpark arrival detection), `warehouse/` (dbt, DuckDB/BigQuery), `orchestration/`
+  (Airflow in Docker), `ml/` (delay model, MLflow). Shared code is in `basmy/`; Python tests in `tests/`
+  (`pytest`), frontend tests via `npm test` (vitest).
 - **Important, non-obvious fact about the live feed** (found by inspecting real traffic, not assumed):
   during active service `trip_id` is populated, but `route_id`, `stop_id`, `current_stop_sequence`,
   `direction_id`, `current_status`, and `speed` are not. Any feature needing route/stop context (next
