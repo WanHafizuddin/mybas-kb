@@ -113,7 +113,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+"
     r"|https://kb-mybastracker-simulatedlive\.onrender\.com"
-    r"|https://kb-my-bas-tracker-simulated-live\.vercel\.app",
+    r"|https://mybas-kb\.vercel\.app",
     allow_methods=["GET"],
     allow_headers=["*"],
 )

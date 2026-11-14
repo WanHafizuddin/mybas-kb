@@ -15,7 +15,7 @@ each other at one seam:
   frontend — nothing in `realtime/` is built or bundled by Vite.
 
 Deployed frontend: https://kb-mybastracker-simulatedlive.onrender.com and
-https://kb-my-bas-tracker-simulated-live.vercel.app/ (see `vite.config.js` `allowedHosts` for the Render
+https://mybas-kb.vercel.app/ (see `vite.config.js` `allowedHosts` for the Render
 domain). The Python backend is local-only for now; only the Supabase database is cloud-hosted.
 
 ## Commands
