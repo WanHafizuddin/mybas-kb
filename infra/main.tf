@@ -1,8 +1,11 @@
 # Phase 1 infrastructure: one bucket, one least-privilege service account,
-# one always-free e2-micro VM running the collector under systemd.
+# one always-free e2-micro VM running two collectors under systemd:
+#   basmy-collector          raw positions -> Cloud Storage (data platform)
+#   basmy-supabase-collector realtime/collector.py -> Supabase (live map),
+#                            replacing the throttled GitHub Actions cron
 
 resource "google_project_service" "apis" {
-  for_each           = toset(["compute.googleapis.com", "storage.googleapis.com", "iam.googleapis.com"])
+  for_each           = toset(["compute.googleapis.com", "storage.googleapis.com", "iam.googleapis.com", "secretmanager.googleapis.com"])
   service            = each.value
   disable_on_destroy = false
 }
@@ -45,6 +48,29 @@ resource "google_storage_bucket_iam_member" "collector_create_only" {
   member = "serviceAccount:${google_service_account.collector.email}"
 }
 
+# --- Supabase connection string (for the live-map collector) -----------------
+#
+# Terraform creates only the empty secret. You add the value yourself, so the
+# password never appears in Terraform state or in this repo:
+#   gcloud secrets versions add basmy-supabase-database-url --data-file=-
+# Always free: 6 active secret versions and 10,000 access operations a month;
+# the VM reads it once per boot.
+
+resource "google_secret_manager_secret" "supabase_database_url" {
+  secret_id = "basmy-supabase-database-url"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.apis]
+}
+
+# Read access to this one secret only.
+resource "google_secret_manager_secret_iam_member" "collector_reads_db_url" {
+  secret_id = google_secret_manager_secret.supabase_database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.collector.email}"
+}
+
 # --- VM --------------------------------------------------------------------
 
 resource "google_compute_instance" "collector" {
@@ -69,9 +95,10 @@ resource "google_compute_instance" "collector" {
 
   service_account {
     email = google_service_account.collector.email
-    # The scope just allows Cloud Storage API calls; the IAM binding above is
-    # what actually limits the account to creating objects in one bucket.
-    scopes = ["https://www.googleapis.com/auth/devstorage.read_write"]
+    # cloud-platform is needed for Secret Manager. Scopes are only an upper
+    # bound: the IAM bindings above are what limit this account to creating
+    # objects in one bucket and reading one secret. It has no project roles.
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
   metadata = {
@@ -82,6 +109,7 @@ resource "google_compute_instance" "collector" {
     bucket   = google_storage_bucket.data.name
     repo_url = var.repo_url
     repo_ref = var.repo_ref
+    secret   = google_secret_manager_secret.supabase_database_url.secret_id
   })
 
   shielded_instance_config {
@@ -92,5 +120,8 @@ resource "google_compute_instance" "collector" {
 
   allow_stopping_for_update = true
 
-  depends_on = [google_storage_bucket_iam_member.collector_create_only]
+  depends_on = [
+    google_storage_bucket_iam_member.collector_create_only,
+    google_secret_manager_secret_iam_member.collector_reads_db_url,
+  ]
 }

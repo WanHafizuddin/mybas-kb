@@ -52,6 +52,8 @@ log "installing collector into $VENV"
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q -r "$APP/collector/requirements.txt"
 "$VENV/bin/pip" install -q --no-deps -e "$APP"
+# Extra deps for realtime/collector.py (the Supabase live-map collector).
+"$VENV/bin/pip" install -q "psycopg[binary]>=3.2" "python-dotenv>=1.0"
 chown -R basmy:basmy "$APP_ROOT"
 
 log "writing /etc/basmy-collector.env"
@@ -70,4 +72,23 @@ systemctl enable basmy-collector.service
 # restart (not start): on reboot-with-new-code this picks up the new checkout.
 # The running collector gets SIGTERM first, so it flushes its spool.
 systemctl restart basmy-collector.service
+
+# --- Supabase live-map collector (replaces the GitHub Actions cron) ----------
+# DATABASE_URL comes from Secret Manager, never from the repo or metadata.
+# If the secret has no version yet, skip this service; the raw collector
+# above keeps running either way.
+install -m 644 "$APP/collector/basmy-supabase-collector.service" /etc/systemd/system/basmy-supabase-collector.service
+systemctl daemon-reload
+if DB_URL=$(gcloud secrets versions access latest --secret="${secret}" --quiet 2>/dev/null) && [ -n "$DB_URL" ]; then
+  umask 077
+  printf 'DATABASE_URL=%s\n' "$DB_URL" > /etc/basmy-supabase.env
+  chmod 600 /etc/basmy-supabase.env
+  unset DB_URL
+  systemctl enable basmy-supabase-collector.service
+  systemctl restart basmy-supabase-collector.service
+  log "supabase collector started"
+else
+  systemctl disable --now basmy-supabase-collector.service 2>/dev/null || true
+  log "secret ${secret} has no value yet: supabase collector NOT started (add it, then reboot)"
+fi
 log "done"

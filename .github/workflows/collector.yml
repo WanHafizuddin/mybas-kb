@@ -1,8 +1,13 @@
-name: Poll live vehicle positions
+name: Poll live vehicle positions (manual)
 
+# Manual one-off poll into Supabase, for testing.
+#
+# This used to run on `schedule: */5 * * * *`. GitHub treats schedules as
+# best effort and throttled this one to roughly one run every 4-8 hours
+# (3-5 polls a day instead of 288), so the live map was empty most of the
+# time. Continuous polling now runs on the e2-micro VM as the
+# basmy-supabase-collector systemd service (see collector/README.md).
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch: {}
 
 jobs:

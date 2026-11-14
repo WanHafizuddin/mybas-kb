@@ -65,6 +65,10 @@ deduplicated or cleaned.
 | Standard persistent disk | 30 GB | 30 GB |
 | Uploads (Class A ops) | 1 feed × 24 × ~30 days ≈ 720/month | 5,000/month |
 | Regional Standard storage | grows with fleet size; check monthly | 5 GB-months |
+| Secret Manager | 1 secret version, read once per boot | 6 versions, 10,000 accesses/month |
+
+Both collectors run on the same e2-micro VM: the raw one is capped at 300 MB
+of memory and the Supabase one at 200 MB, on a 1 GB VM with 1 GB of swap.
 
 Each extra feed adds about 720 uploads a month, so the free tier fits about
 6 feeds at hourly rotation. Check current pricing for in-use external IPv4
@@ -108,6 +112,36 @@ and starts `basmy-collector.service`.
 
 The VM clones over anonymous HTTPS, so the repo must be public.
 
+**4. Turn on the live-map collector.** This feeds Supabase, which the map
+reads. Terraform creates an empty Secret Manager secret; you add the
+Supabase connection string to it yourself, so the password never goes into
+Terraform state or the repo.
+
+Use the **Session pooler** URL from Supabase (Dashboard, Connect, Session
+pooler). The direct connection is IPv6-only and the VM only has IPv4.
+
+```bash
+gcloud secrets versions add basmy-supabase-database-url --data-file=-
+```
+
+Paste the URL, press Enter, then Ctrl+D. Then reboot the VM so the startup
+script picks the secret up:
+
+```bash
+gcloud compute instances reset basmy-collector --zone us-central1-a
+```
+
+The startup script writes the URL to `/etc/basmy-supabase.env` (root only,
+mode 600), then enables and starts `basmy-supabase-collector.service`. That
+service runs the existing `realtime/collector.py` every 30 s, forever, and
+replaces the GitHub Actions cron. GitHub treated that schedule as best effort
+and ran it only about every 4–8 hours, so the live map was mostly empty. The
+workflow is now manual-only (`workflow_dispatch`).
+
+**Deploy order:** start the VM from the feature branch and confirm the
+Supabase collector is running *before* merging to `main`. Merging is what
+removes the cron schedule.
+
 **To redeploy new code**, push to `repo_ref`, then reboot the VM. The startup
 script runs on every boot: it pulls, reinstalls and restarts the service.
 
@@ -116,6 +150,20 @@ gcloud compute instances reset basmy-collector --zone us-central1-a
 ```
 
 ## Health checks
+
+**Live-map (Supabase) collector.** Check it's running:
+
+```bash
+systemctl status basmy-supabase-collector
+```
+
+Follow its log; there's one `polled feed: N vehicles` line every 30 s.
+
+```bash
+journalctl -u basmy-supabase-collector -f
+```
+
+**Raw (Cloud Storage) collector.**
 
 SSH in first (the `terraform output ssh` value):
 
