@@ -59,17 +59,43 @@ def _peak_factor(local_seconds: int) -> float:
     return 1.8 if hour in (7, 8, 17, 18) else 1.0
 
 
-def simulate_trip_timeline(info: TripInfo, rng: random.Random, bad_day: float) -> list[tuple[float, float, float]]:
+def route_effect(route_id: str, seed: int) -> tuple[float, float]:
+    """Fixed per-route character: (start offset seconds, drift multiplier).
+    Deterministic for a seed, so a model can learn it from route_id."""
+    r = random.Random(f"{seed}-{route_id}")
+    return r.uniform(-30, 150), r.uniform(0.5, 2.0)
+
+
+def simulate_trip_timeline(
+    info: TripInfo,
+    rng: random.Random,
+    bad_day: float,
+    route_fx: tuple[float, float] = (0.0, 1.0),
+    is_weekend: bool = False,
+    rain_mm_at=None,
+    day_start_epoch: float | None = None,
+) -> list[tuple[float, float, float]]:
     """True (arrival_offset_s, departure_offset_s, delay_s) per stop, in
-    seconds since service-day midnight."""
-    peak = _peak_factor(info.first_arrival)
-    delay = rng.gauss(60 * bad_day, 90)
-    delay = max(-90.0, delay)
+    seconds since service-day midnight.
+
+    The delay is a random walk whose drift per stop depends on things a model
+    can observe: the route (route_fx), peak hours (by each stop's scheduled
+    hour), weekends (lighter traffic) and rain in that hour (rain_mm_at, a
+    function of the UTC epoch hour). bad_day is an unobserved day-level
+    factor, i.e. noise the model cannot explain.
+    """
+    offset, drift_mult = route_fx
+    delay = max(-90.0, rng.gauss(offset + 30 * (bad_day - 1), 90))
     timeline = []
     prev_departure = None
     for k, sched in enumerate(info.scheduled_arrivals):
         if k > 0:
-            delay += rng.gauss(4 * peak * bad_day, 20)
+            rain = 0.0
+            if rain_mm_at is not None and day_start_epoch is not None:
+                rain = rain_mm_at(int((day_start_epoch + sched) // 3600 * 3600)) or 0.0
+            drift = (4.0 * drift_mult * _peak_factor(sched) * (0.6 if is_weekend else 1.0)
+                     * (1.0 + 0.5 * min(rain, 6.0)) * bad_day)
+            delay += rng.gauss(drift, 20)
         arrival = sched + delay
         if prev_departure is not None and arrival < prev_departure + 20:
             arrival = prev_departure + 20  # buses cannot teleport
@@ -125,8 +151,12 @@ def generate(
     seed: int = 7,
     config: SyntheticConfig | None = None,
     trip_ids: list[str] | None = None,
+    rain_mm_by_hour: dict[int, float] | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Return (raw_records, ground_truth_rows)."""
+    """Return (raw_records, ground_truth_rows).
+
+    rain_mm_by_hour: optional {UTC epoch hour: precipitation mm} (e.g. the real
+    Open-Meteo series for Kota Bharu) so synthetic delays respond to rain."""
     config = config or SyntheticConfig()
     rng = random.Random(seed)
     index = TripIndex(gtfs)
@@ -143,7 +173,8 @@ def generate(
         if not active:
             continue
         chosen = active if trip_ids is not None else rng.sample(active, min(trips_per_day, len(active)))
-        bad_day = rng.choice([1.0, 1.0, 1.0, 2.0])  # a "rainy" day now and then
+        bad_day = rng.choice([1.0, 1.0, 1.0, 1.5])  # unobserved bad day now and then
+        is_weekend = service_date.weekday() >= 5
         day_start = index.service_day_start(service_date)
 
         for n, trip_id in enumerate(chosen):
@@ -151,7 +182,10 @@ def generate(
             if info is None:
                 continue
             vehicle = fleet[(day_n * 97 + n) % len(fleet)]
-            timeline = simulate_trip_timeline(info, rng, bad_day)
+            timeline = simulate_trip_timeline(
+                info, rng, bad_day, route_effect(info.route_id, seed), is_weekend,
+                rain_mm_by_hour.get if rain_mm_by_hour else None, day_start.timestamp(),
+            )
 
             for k, (arr, _dep, delay) in enumerate(timeline):
                 truth.append({
@@ -234,10 +268,20 @@ def main(argv=None):
     p.add_argument("--days", type=int, default=3)
     p.add_argument("--trips-per-day", type=int, default=40)
     p.add_argument("--seed", type=int, default=7)
+    p.add_argument("--weather", help="weather_hourly.parquet (fetch_weather output); delays then respond "
+                                     "to the real Kota Bharu rain in each hour")
     args = p.parse_args(argv)
 
+    rain = None
+    if args.weather:
+        import pandas as pd
+        w = pd.read_parquet(args.weather)
+        w = w[w["point_id"] == "kota_bharu"].dropna(subset=["precipitation_mm"])
+        rain = {int(ts.timestamp()): float(mm) for ts, mm in zip(w["hour_utc"], w["precipitation_mm"])}
+
     gtfs = load_merged(args.gtfs)
-    records, truth = generate(gtfs, date.fromisoformat(args.start), args.days, args.trips_per_day, args.seed)
+    records, truth = generate(gtfs, date.fromisoformat(args.start), args.days, args.trips_per_day, args.seed,
+                              rain_mm_by_hour=rain)
     out = Path(args.out)
     files = write_raw(records, out)
     truth_path = write_truth(truth, out)

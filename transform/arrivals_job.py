@@ -33,7 +33,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -150,14 +150,24 @@ def _flatten_record(r: dict) -> tuple | None:
     return (r.get("agency"), vehicle_id, trip_id, ts, float(lat), float(lon))
 
 
-def read_pings_python(spark: SparkSession, raw_path: str) -> DataFrame:
+def raw_utc_dates_for_service_date(service_date: date) -> list[str]:
+    """Raw partitions are UTC dates. A Kuala Lumpur service day starts at
+    16:00 UTC the day before and trips can run past local midnight, so read
+    the UTC dates before, of and after the service date."""
+    return [(service_date + timedelta(days=k)).isoformat() for k in (-1, 0, 1)]
+
+
+def read_pings_python(spark: SparkSession, raw_path: str, utc_dates: list[str] | None = None) -> DataFrame:
     """Windows development fallback: Hadoop cannot open local files on
     Windows without winutils.exe/hadoop.dll, so read the gzipped NDJSON with
     Python and hand Spark the rows. Everything downstream is unchanged."""
     import gzip
 
     rows = []
+    wanted = {f"date={d}" for d in utc_dates} if utc_dates else None
     for path in sorted(Path(raw_path).rglob("*.jsonl.gz")):
+        if wanted is not None and not wanted.intersection(path.parts):
+            continue
         with gzip.open(path, "rt", encoding="utf-8") as fh:
             for line in fh:
                 if line.strip():
@@ -169,16 +179,21 @@ def read_pings_python(spark: SparkSession, raw_path: str) -> DataFrame:
     return spark.createDataFrame(pdf, schema=schema)
 
 
-def read_pings(spark: SparkSession, raw_path: str, reader: str = "auto") -> DataFrame:
+def read_pings(spark: SparkSession, raw_path: str, reader: str = "auto",
+               utc_dates: list[str] | None = None) -> DataFrame:
     if reader == "auto":
         reader = "spark" if (raw_path.startswith("gs://") or spark_can_access_local_files()) else "python"
     if reader == "python":
-        return read_pings_python(spark, raw_path)
+        return read_pings_python(spark, raw_path, utc_dates)
+    path = raw_path
+    if utc_dates:
+        # Hadoop glob: only the UTC date partitions we need, for every agency.
+        path = raw_path.rstrip("/") + "/agency=*/date={" + ",".join(utc_dates) + "}"
     raw = (
         spark.read.schema(RAW_SCHEMA)
         .option("recursiveFileLookup", "true")
         .option("pathGlobFilter", "*.jsonl.gz")
-        .json(raw_path)
+        .json(path)
     )
     v = F.col("entity.vehicle")
     fetched_epoch = F.unix_timestamp(F.to_timestamp("fetched_at"))
@@ -471,10 +486,31 @@ class JobResult:
     report: QualityReport
 
 
+def restrict_to_service_date(pings: DataFrame, gtfs: GtfsStatic, service_date: date) -> DataFrame:
+    """Keep the pings that belong to one service date: those classified to it,
+    plus unmatched pings whose local (Kuala Lumpur) date is that date."""
+    local_date = F.to_date(F.from_utc_timestamp(F.timestamp_seconds("vehicle_ts"), gtfs.agency_timezone))
+    sd = service_date.isoformat()
+    return (
+        classify(pings, gtfs)
+        .where((F.col("service_date") == sd)
+               | (F.col("service_date").isNull() & (local_date == F.lit(sd).cast("date"))))
+        .select(*PING_COLUMNS)
+    )
+
+
 def run_job(spark: SparkSession, raw_path: str, gtfs: GtfsStatic, label: str,
-            params: JobParams | None = None, reader: str = "auto") -> JobResult:
+            params: JobParams | None = None, reader: str = "auto",
+            service_date: date | None = None) -> JobResult:
+    """service_date=None processes everything under raw_path. With a date,
+    only that Kuala Lumpur service day is read, matched and written (the
+    output's dynamic partition overwrite then replaces just that day)."""
     params = params or JobParams()
-    pings = read_pings(spark, raw_path, reader).cache()
+    utc_dates = raw_utc_dates_for_service_date(service_date) if service_date else None
+    pings = read_pings(spark, raw_path, reader, utc_dates)
+    if service_date is not None:
+        pings = restrict_to_service_date(pings, gtfs, service_date)
+    pings = pings.cache()
     raw_count = pings.count()
     deduped = dedupe(pings).cache()
     deduped_count = deduped.count()
@@ -494,6 +530,8 @@ def main(argv=None):
     p.add_argument("--out", required=True, help="output folder, e.g. gs://BUCKET/processed/arrivals")
     p.add_argument("--label", required=True, choices=["REAL", "SYNTHETIC"],
                    help="printed on the report so synthetic numbers are never mistaken for real ones")
+    p.add_argument("--service-date", type=date.fromisoformat,
+                   help="process only this Kuala Lumpur service date (YYYY-MM-DD); default: everything")
     p.add_argument("--report-json", help="also write the quality report as JSON to this local path")
     p.add_argument("--samples", type=int, default=20, help="sample rows to print")
     p.add_argument("--reader", choices=["auto", "spark", "python"], default="auto",
@@ -510,7 +548,8 @@ def main(argv=None):
     spark.sparkContext.setLogLevel("WARN")
     try:
         result = run_job(spark, args.raw, gtfs, args.label,
-                         JobParams(args.max_offset_m, args.max_gap_s, args.tolerance_m), args.reader)
+                         JobParams(args.max_offset_m, args.max_gap_s, args.tolerance_m), args.reader,
+                         args.service_date)
         write_arrivals(result.arrivals, args.out, args.writer)
         print(result.report.render())
         if args.samples:

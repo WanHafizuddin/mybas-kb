@@ -144,3 +144,14 @@ def test_duplicate_vehicle_timestamps_are_removed(spark, tmp_path):
     assert res.report.raw_records == 2
     assert res.report.pings_after_dedupe == 1
     assert res.report.by_status == {"no_trip_id": 1}
+
+
+def test_single_service_date_only_reads_and_writes_that_day(spark, synthetic):
+    gtfs, _, truth, raw = synthetic
+    day = date(2026, 11, 13)
+    res = run_job(spark, str(raw), gtfs, "SYNTHETIC", service_date=day)
+    rows = res.arrivals.collect()
+    assert rows and {r["service_date"] for r in rows} == {day}
+    expected = sum(1 for t in truth if t["service_date"] == day.isoformat())
+    assert len(rows) >= 0.9 * expected
+    assert res.report.service_dates == [day.isoformat()]

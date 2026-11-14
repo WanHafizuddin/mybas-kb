@@ -1,0 +1,77 @@
+version: 2
+
+models:
+  - name: dim_route
+    description: One row per GTFS route (merged timetable snapshots).
+    columns:
+      - name: route_id
+        tests: [unique, not_null]
+
+  - name: dim_stop
+    description: One row per stop, with its nearest weather point.
+    columns:
+      - name: stop_id
+        tests: [unique, not_null]
+      - name: weather_point_id
+        tests: [not_null]
+      - name: weather_point_distance_km
+        tests:
+          - value_between: {arguments: {min_value: 0, max_value: 60}}
+
+  - name: fact_arrivals
+    description: >
+      One row per detected stop arrival with a sane delay, joined to the
+      weather at the stop's nearest weather point in the hour of arrival.
+      Timestamps are UTC; local_hour and day_of_week are Asia/Kuala_Lumpur.
+    columns:
+      - name: arrival_id
+        tests: [unique, not_null]
+      - name: route_id
+        tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_route'), field: route_id}}
+      - name: stop_id
+        tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_stop'), field: stop_id}}
+      - name: service_date
+        tests: [not_null]
+      - name: actual_arrival_utc
+        tests: [not_null]
+      - name: delay_seconds
+        description: actual - scheduled, seconds. Positive = late.
+        tests:
+          - not_null
+          - value_between:
+              arguments:
+                min_value: "{{ var('sane_min_delay_s') }}"
+                max_value: "{{ var('sane_max_delay_s') }}"
+      - name: local_hour
+        tests:
+          - not_null
+          - value_between: {arguments: {min_value: 0, max_value: 23}}
+      - name: day_of_week
+        tests:
+          - not_null
+          - accepted_values: {arguments: {values: [1, 2, 3, 4, 5, 6, 7], quote: false}}
+      - name: is_on_time
+        tests: [not_null]
+
+  - name: arrivals_rejected
+    description: Arrivals with a delay outside the sane range. Inspect, never ignore.
+    columns:
+      - name: arrival_id
+        tests: [unique, not_null]
+
+  - name: mart_on_time_route_hour_dow
+    description: On-time rate by route, local hour and ISO day of week (1 = Monday).
+    tests:
+      - unique_combination: {arguments: {columns: [route_id, local_hour, day_of_week]}}
+    columns:
+      - name: on_time_rate
+        tests:
+          - not_null
+          - value_between: {arguments: {min_value: 0, max_value: 1}}
+      - name: n_arrivals
+        tests:
+          - value_between: {arguments: {min_value: 1, max_value: 100000000}}

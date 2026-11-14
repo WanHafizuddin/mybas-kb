@@ -55,3 +55,15 @@ data/real/
 spark-warehouse/
 metastore_db/
 derby.log
+# dbt / DuckDB build artefacts
+warehouse/dbt/target/
+warehouse/dbt/logs/
+warehouse/dbt/dbt_packages/
+warehouse/dbt/.user.yml
+*.duckdb
+*.duckdb.wal
+logs/
+# ML: MLflow tracking DB/artifacts and locally exported models
+ml/mlruns/
+mlruns/
+data/models/

@@ -1,0 +1,30 @@
+name: basmy
+version: "1.0.0"
+config-version: 2
+profile: basmy
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages", "logs"]
+
+vars:
+  # On time = from 1 minute early to 5 minutes late.
+  on_time_min_delay_s: -60
+  on_time_max_delay_s: 300
+  # Sane range: anything outside goes to arrivals_rejected instead of the fact.
+  sane_min_delay_s: -1800     # 30 minutes early
+  sane_max_delay_s: 7200      # 2 hours late
+  # Precipitation at or above this (mm in the hour) counts as raining.
+  rain_threshold_mm: 0.1
+  local_timezone: "Asia/Kuala_Lumpur"
+
+models:
+  basmy:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table

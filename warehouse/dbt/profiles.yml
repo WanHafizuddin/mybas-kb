@@ -1,0 +1,25 @@
+# No secrets here. DuckDB is a local file; BigQuery uses your Application
+# Default Credentials (gcloud auth application-default login).
+#
+# Real and synthetic data always live in separate warehouses:
+#   duckdb   -> data/<dataset>/warehouse.duckdb       (BASMY_DUCKDB_PATH)
+#   bigquery -> dataset basmy_<dataset> (+ basmy_<dataset>_raw for sources)
+basmy:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('BASMY_DUCKDB_PATH', '../../data/synthetic/warehouse.duckdb') }}"
+      schema: analytics
+      threads: 4
+      settings:
+        TimeZone: UTC
+    bigquery:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT', 'mybas-tracker-504819') }}"
+      dataset: "basmy_{{ env_var('BASMY_DATASET', 'synthetic') }}"
+      location: "{{ env_var('BQ_LOCATION', 'us-central1') }}"
+      threads: 4
+      job_execution_timeout_seconds: 300
+      priority: interactive

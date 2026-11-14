@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: stg_arrivals
+    columns:
+      - name: arrival_id
+        tests: [unique, not_null]
+      - name: trip_id
+        tests:
+          - not_null
+          - relationships: {arguments: {to: ref('stg_trips'), field: trip_id}}
+      - name: stop_id
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: service_date
+        tests: [not_null]
+      - name: actual_arrival_utc
+        tests: [not_null]
+      - name: scheduled_arrival_utc
+        tests: [not_null]
+      - name: delay_seconds
+        tests: [not_null]
+
+  - name: stg_routes
+    columns:
+      - name: route_id
+        tests: [unique, not_null]
+
+  - name: stg_stops
+    columns:
+      - name: stop_id
+        tests: [unique, not_null]
+      - name: stop_lat
+        tests:
+          - not_null
+          - value_between: {arguments: {min_value: 4.0, max_value: 7.0}}
+      - name: stop_lon
+        tests:
+          - not_null
+          - value_between: {arguments: {min_value: 100.5, max_value: 103.5}}
+
+  - name: stg_trips
+    columns:
+      - name: trip_id
+        tests: [unique, not_null]
+      - name: route_id
+        tests:
+          - not_null
+          - relationships: {arguments: {to: ref('stg_routes'), field: route_id}}
+
+  - name: stg_weather_hourly
+    tests:
+      - unique_combination: {arguments: {columns: [point_id, hour_utc]}}
+    columns:
+      - name: point_id
+        tests:
+          - not_null
+          - relationships: {arguments: {to: ref('stg_weather_points'), field: point_id}}
+      - name: hour_utc
+        tests: [not_null]
+      - name: temperature_c
+        tests:
+          - value_between: {arguments: {min_value: 10, max_value: 45}}
+      - name: precipitation_mm
+        tests:
+          - value_between: {arguments: {min_value: 0, max_value: 200}}
+
+  - name: stg_weather_points
+    columns:
+      - name: point_id
+        tests: [unique, not_null]
