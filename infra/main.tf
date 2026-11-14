@@ -101,16 +101,18 @@ resource "google_compute_instance" "collector" {
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
+  # The startup script lives in the metadata map (not metadata_startup_script),
+  # so editing it later updates the VM in place instead of recreating it.
   metadata = {
     enable-oslogin = "TRUE"
+    # replace() strips Windows line endings: a CRLF "#!/bin/bash" cannot run.
+    startup-script = replace(templatefile("${path.module}/startup.sh.tftpl", {
+      bucket   = google_storage_bucket.data.name
+      repo_url = var.repo_url
+      repo_ref = var.repo_ref
+      secret   = google_secret_manager_secret.supabase_database_url.secret_id
+    }), "\r", "")
   }
-
-  metadata_startup_script = templatefile("${path.module}/startup.sh.tftpl", {
-    bucket   = google_storage_bucket.data.name
-    repo_url = var.repo_url
-    repo_ref = var.repo_ref
-    secret   = google_secret_manager_secret.supabase_database_url.secret_id
-  })
 
   shielded_instance_config {
     enable_secure_boot          = true

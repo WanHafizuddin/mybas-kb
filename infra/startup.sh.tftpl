@@ -40,9 +40,12 @@ id basmy >/dev/null 2>&1 || useradd --system --home-dir "$APP_ROOT" --shell /usr
 mkdir -p "$APP_ROOT"
 
 log "fetching $REPO_URL @ $REPO_REF"
+# The checkout is owned by the basmy user but this script runs as root, so
+# tell git that is expected (otherwise: "detected dubious ownership").
+GIT="git -c safe.directory=$APP"
 if [ -d "$APP/.git" ]; then
-  git -C "$APP" fetch --depth 1 origin "$REPO_REF"
-  git -C "$APP" checkout -q -B "$REPO_REF" FETCH_HEAD
+  $GIT -C "$APP" fetch --depth 1 origin "$REPO_REF"
+  $GIT -C "$APP" checkout -q -B "$REPO_REF" FETCH_HEAD
 else
   git clone -q --depth 1 --branch "$REPO_REF" "$REPO_URL" "$APP"
 fi
