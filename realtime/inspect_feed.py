@@ -17,7 +17,10 @@ from datetime import datetime, timezone
 import requests
 from google.transit import gtfs_realtime_pb2
 
-FEED_URL = "https://api.data.gov.my/gtfs-realtime/vehicle-position/mybas-kota-bharu"
+# Shared with collector.py and collector/; install once from the repo root
+# with `pip install -e .` (see pyproject.toml).
+from basmy.gtfs_rt import KOTA_BHARU_VEHICLE_POSITIONS_URL as FEED_URL
+from basmy.gtfs_rt import fetch_feed
 
 FIELDS = [
     "vehicle_id", "vehicle_label", "license_plate", "latitude", "longitude",
@@ -25,14 +28,6 @@ FIELDS = [
     "current_stop_sequence", "stop_id", "current_status", "congestion_level",
     "occupancy_status", "occupancy_percentage", "timestamp",
 ]
-
-
-def fetch_feed() -> gtfs_realtime_pb2.FeedMessage:
-    response = requests.get(FEED_URL, timeout=10)
-    response.raise_for_status()
-    feed = gtfs_realtime_pb2.FeedMessage()
-    feed.ParseFromString(response.content)
-    return feed
 
 
 def describe_vehicle(entity) -> dict:

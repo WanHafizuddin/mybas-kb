@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+project_id  = "your-gcp-project-id"
+bucket_name = "your-unique-bucket-name"
+
+# Branch the VM runs. Use the feature branch until it is merged.
+repo_ref = "phase-1-collector"
+
+# region = "us-central1"
+# zone   = "us-central1-a"

@@ -1,0 +1,40 @@
+[Unit]
+Description=bas.my GTFS-Realtime raw collector
+Wants=network-online.target
+After=network-online.target
+# No give-up limit on restarts.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=basmy
+Group=basmy
+WorkingDirectory=/opt/basmy/app
+EnvironmentFile=/etc/basmy-collector.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/basmy/venv/bin/python -m collector.main
+
+# Always come back: crashes, OOM kills, anything.
+Restart=always
+RestartSec=10
+
+# SIGTERM -> collector flushes and uploads the spool. Give uploads time.
+KillSignal=SIGTERM
+TimeoutStopSec=180
+
+# Creates /var/lib/basmy-collector owned by basmy (spool + health.json).
+StateDirectory=basmy-collector
+
+# Keep it light on the 1 GB e2-micro.
+MemoryMax=300M
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

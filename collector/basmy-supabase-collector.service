@@ -1,0 +1,36 @@
+[Unit]
+Description=bas.my live-map collector (realtime/collector.py -> Supabase)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=basmy
+Group=basmy
+WorkingDirectory=/opt/basmy/app/realtime
+# DATABASE_URL only; root-owned, mode 600, written by the startup script
+# from Secret Manager. systemd reads it before dropping to the basmy user.
+EnvironmentFile=/etc/basmy-supabase.env
+Environment=PYTHONUNBUFFERED=1
+# Polls every 30 s forever and appends to vehicle_positions. It already
+# reconnects to Postgres after dropped connections; systemd restarts it on
+# anything else.
+ExecStart=/opt/basmy/venv/bin/python collector.py --interval 30
+
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+MemoryMax=200M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+# Run the arrival job in Docker. From the repo root:
+#
+#   SYNTHETIC end to end, all local:
+#     docker compose -f transform/docker-compose.yml run --rm synthetic
+#     docker compose -f transform/docker-compose.yml run --rm arrivals \
+#       --raw data/synthetic/raw/vehicle_positions --out data/synthetic/processed/arrivals --label SYNTHETIC
+#
+#   REAL data in Cloud Storage (after `gcloud auth application-default login`):
+#     docker compose -f transform/docker-compose.yml run --rm arrivals \
+#       --raw gs://BUCKET/raw/vehicle_positions --out gs://BUCKET/processed/arrivals --label REAL
+#
+#   Tests:
+#     docker compose -f transform/docker-compose.yml run --rm --entrypoint pytest arrivals
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: transform/Dockerfile
+  image: basmy-transform
+  volumes:
+    - ../data:/app/data
+    # Your gcloud application-default credentials, read-only. Only needed for gs:// paths.
+    - ${APPDATA:-~/.config}/gcloud:/root/.config/gcloud:ro
+  environment:
+    GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+    # Timetable snapshots, oldest first (newer ones override older ones per trip).
+    BASMY_GTFS: >-
+      data/gtfs_static/mybas-kota-bharu/2026-08-09.zip
+      data/gtfs_static/mybas-kota-bharu/2026-11-14.zip
+    PYSPARK_SUBMIT_ARGS: >-
+      --jars /opt/spark-jars/gcs-connector.jar
+      --conf spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem
+      --conf spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS
+      --driver-memory 2g
+      pyspark-shell
+
+services:
+  arrivals:
+    <<: *common
+
+  synthetic:
+    <<: *common
+    entrypoint: ["python", "-m", "transform.synthetic"]
+    command: ["--out", "data/synthetic", "--days", "3", "--trips-per-day", "40"]

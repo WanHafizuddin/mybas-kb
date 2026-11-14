@@ -1,0 +1,106 @@
+{
+  "kota_bharu": [
+    {
+      "row": {
+        "bearing": 90.0,
+        "congestion_level": null,
+        "current_status": null,
+        "current_stop_sequence": null,
+        "direction_id": null,
+        "entity_id": "VKB1234",
+        "feed_header_timestamp": "2026-11-13T21:02:02+00:00",
+        "latitude": 6.125400066375732,
+        "license_plate": "VKB1234",
+        "longitude": 102.23860168457031,
+        "occupancy_percentage": null,
+        "occupancy_status": null,
+        "route_id": null,
+        "speed": null,
+        "stop_id": null,
+        "trip_id": null,
+        "vehicle_id": "VKB1234",
+        "vehicle_label": "VKB1234",
+        "vehicle_timestamp": "2026-11-13T21:01:57+00:00"
+      },
+      "warnings": []
+    },
+    {
+      "row": {
+        "bearing": 180.0,
+        "congestion_level": null,
+        "current_status": null,
+        "current_stop_sequence": null,
+        "direction_id": null,
+        "entity_id": "VKB5678",
+        "feed_header_timestamp": "2026-11-13T21:02:02+00:00",
+        "latitude": 6.130099773406982,
+        "license_plate": "VKB5678",
+        "longitude": 102.24019622802734,
+        "occupancy_percentage": null,
+        "occupancy_status": null,
+        "route_id": null,
+        "speed": null,
+        "stop_id": null,
+        "trip_id": "weekday_C10_0_trip3",
+        "vehicle_id": "VKB5678",
+        "vehicle_label": null,
+        "vehicle_timestamp": "2026-11-13T21:01:50+00:00"
+      },
+      "warnings": []
+    },
+    {
+      "row": {
+        "bearing": null,
+        "congestion_level": null,
+        "current_status": null,
+        "current_stop_sequence": null,
+        "direction_id": null,
+        "entity_id": "VFAR001",
+        "feed_header_timestamp": "2026-11-13T21:02:02+00:00",
+        "latitude": 3.1389999389648438,
+        "license_plate": null,
+        "longitude": 101.68689727783203,
+        "occupancy_percentage": null,
+        "occupancy_status": null,
+        "route_id": null,
+        "speed": null,
+        "stop_id": null,
+        "trip_id": null,
+        "vehicle_id": "VFAR001",
+        "vehicle_label": null,
+        "vehicle_timestamp": "2026-11-13T21:01:32+00:00"
+      },
+      "warnings": [
+        "lat/lon outside plausible Kelantan bounding box: 3.1389999389648438, 101.68689727783203"
+      ]
+    }
+  ],
+  "rapid_kl": [
+    {
+      "row": {
+        "bearing": 270.0,
+        "congestion_level": null,
+        "current_status": "IN_TRANSIT_TO",
+        "current_stop_sequence": null,
+        "direction_id": null,
+        "entity_id": "WB1234A",
+        "feed_header_timestamp": "2026-11-13T21:02:36+00:00",
+        "latitude": 3.0738000869750977,
+        "license_plate": "WB1234A",
+        "longitude": 101.51830291748047,
+        "occupancy_percentage": null,
+        "occupancy_status": "FEW_SEATS_AVAILABLE",
+        "route_id": "T789",
+        "speed": 8.300000190734863,
+        "stop_id": null,
+        "trip_id": "260716010110S1",
+        "vehicle_id": "WB1234A",
+        "vehicle_label": null,
+        "vehicle_timestamp": "2026-11-13T21:02:32+00:00"
+      },
+      "warnings": [
+        "lat/lon outside plausible Kelantan bounding box: 3.0738000869750977, 101.51830291748047"
+      ]
+    }
+  ]
+}

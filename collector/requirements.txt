@@ -1,0 +1,8 @@
+# Runtime dependencies of the always-on collector, at the versions the test
+# suite passed with (Python 3.11). The VM installs these, then the repo itself
+# with `pip install --no-deps -e .` (see infra/startup.sh.tftpl).
+requests==2.34.2
+gtfs-realtime-bindings==3.0.0
+protobuf==7.36.2
+google-cloud-storage==3.17.1
+google-api-core==2.44.0
