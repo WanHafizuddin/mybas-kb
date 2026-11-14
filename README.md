@@ -5,7 +5,7 @@ A web app for exploring **myBAS Kota Bharu** public-transit routes, stops, and s
 ## Live demo
 
 - [Render](https://kb-mybastracker-simulatedlive.onrender.com)
-- [Vercel](https://kb-my-bas-tracker-simulated-live.vercel.app/)
+- [Vercel](https://mybas-kb.vercel.app/)
 
 ## Features
 
