@@ -23,10 +23,11 @@ warehouse = [
     "duckdb>=1.1", "google-cloud-bigquery>=3.25", "pandas>=2.2", "pyarrow>=17",
     "gtfs-realtime-bindings>=2.2,<3",
 ]
+ml = ["xgboost>=3.0,<4", "mlflow>=3.0,<4", "scikit-learn>=1.5", "pandas>=2.2", "pyarrow>=17", "duckdb>=1.1"]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["basmy*", "collector*", "transform*", "warehouse*"]
+include = ["basmy*", "collector*", "transform*", "warehouse*", "ml*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

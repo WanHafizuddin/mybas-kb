@@ -44,6 +44,9 @@ services:
       # production set to gs://<bucket>/raw/vehicle_positions.
       BASMY_REAL_RAW: ${BASMY_REAL_RAW:-/opt/basmy/data/real/raw/vehicle_positions}
       GCP_PROJECT: ${GCP_PROJECT:-mybas-tracker-504819}
+      # Where models are exported (Phase 4). Production: gs://<bucket>/models
+      BASMY_MODELS: ${BASMY_MODELS:-/opt/basmy/data/models}
+      MLFLOW_TRACKING_URI: sqlite:////opt/basmy/ml/mlruns/airflow/mlflow.db
       GOOGLE_APPLICATION_CREDENTIALS: /home/airflow/.config/gcloud/application_default_credentials.json
       PYSPARK_SUBMIT_ARGS: >-
         --jars /opt/spark-jars/gcs-connector.jar

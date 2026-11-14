@@ -63,3 +63,7 @@ warehouse/dbt/.user.yml
 *.duckdb
 *.duckdb.wal
 logs/
+# ML: MLflow tracking DB/artifacts and locally exported models
+ml/mlruns/
+mlruns/
+data/models/

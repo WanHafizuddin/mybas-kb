@@ -18,12 +18,12 @@ RUN mkdir -p /opt/spark-jars \
 
 RUN python -m venv /opt/basmy-venv && chown -R airflow: /opt/basmy-venv
 USER airflow
-# Same dependency set as pyproject.toml extras [transform,warehouse].
+# Same dependency set as pyproject.toml extras [transform,warehouse,ml].
 RUN /opt/basmy-venv/bin/pip install --no-cache-dir \
       "requests>=2.32" "gtfs-realtime-bindings>=2.2,<3" \
       "pyspark==4.0.1" "pandas>=2.2" "pyarrow>=17" \
       "dbt-core>=1.10,<1.12" "dbt-duckdb>=1.10,<1.12" "dbt-bigquery>=1.10,<1.13" \
-      "duckdb>=1.1" "google-cloud-bigquery>=3.25" "google-cloud-storage>=2.18"
+      "duckdb>=1.1" "google-cloud-bigquery>=3.25" "google-cloud-storage>=2.18"       "xgboost>=3.0,<4" "mlflow>=3.0,<4" "scikit-learn>=1.5"
 
 # The repo itself is bind-mounted at /opt/basmy (see docker-compose.yml).
 ENV BASMY_HOME=/opt/basmy \
