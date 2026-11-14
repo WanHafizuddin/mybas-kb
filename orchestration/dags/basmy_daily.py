@@ -1,7 +1,7 @@
 """
 Daily bas.my pipeline:
 
-    raw positions --Spark--> arrivals --+--> load warehouse --> dbt run --> dbt test
+    raw positions --Spark--> arrivals --+--> load warehouse --> dbt run --> dbt test --> monitor predictions
     Open-Meteo archive ---> weather ----+
 
 Runs every day at 20:00 UTC (04:00 in Kuala Lumpur, after service ends) and
@@ -113,4 +113,18 @@ cd warehouse/dbt
 """,
     )
 
-    prepare_synthetic >> detect_arrivals >> fetch_weather >> load_warehouse >> dbt_run >> dbt_test
+    monitor_predictions = BashOperator(
+        task_id="monitor_predictions",
+        doc_md=(
+            "Phase 5: join yesterday's served predictions (Supabase delay_predictions) to the "
+            "arrivals detected above; daily MAE per source; WARNING if the model's MAE is 30% "
+            "worse than its test MAE. Skipped (exit 99) when there is nothing to check."
+        ),
+        skip_on_exit_code=99,
+        bash_command=PRELUDE + r"""
+if [ "$SD" = all ]; then echo "monitoring needs a single service date"; exit 99; fi
+"$BASMY_PYTHON" -m ml.monitor --service-date "$SD" --dataset "$DATASET"   --report-json "$BASMY_HOME/data/$DATASET/quality/monitor_$SD.json"
+""",
+    )
+
+    prepare_synthetic >> detect_arrivals >> fetch_weather >> load_warehouse >> dbt_run >> dbt_test >> monitor_predictions

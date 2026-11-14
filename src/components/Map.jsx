@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { loadData, getCurrentTimeSeconds, getNextArrival, getNextRouteTrip } from '../utils/gtfs';
 import { useRealtimeVehicles } from '../hooks/useRealtimeVehicles';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { NextBusPrediction } from './NextBusPrediction';
 
 const KotaBharuCenter = [6.1256, 102.2386];
 
@@ -28,6 +29,8 @@ export default function MapView() {
     const { vehicles: realVehicles, error: realtimeError, lastFetched: realtimeLastFetched } = useRealtimeVehicles();
     const { position: myPosition, error: geoError } = useGeolocation();
     const mapRef = useRef(null);
+    // Stop whose tooltip is open: only that stop fetches a /predict-delay prediction.
+    const [openStopId, setOpenStopId] = useState(null);
 
     // Real wall-clock time (seconds since midnight) -- only used to keep
     // "next scheduled bus" predictions at stops/routes accurate as time passes.
@@ -100,7 +103,10 @@ export default function MapView() {
                     />
 
                     {/* Draw Bus Stops */}
-                    {data && Object.values(data.stops).map(stop => {
+                    {/* stops.json is keyed by stop_id and its values carry no id
+                        field, so take the id from the key (getNextArrival and
+                        /predict-delay both need it). */}
+                    {data && Object.entries(data.stops).map(([stopId, s]) => ({ ...s, stopId })).map(stop => {
                         const nextBus = getNextArrival(stop.stopId, currentTime, data.stopSchedules, data.calendar);
                         // Calculate time diff in minutes
                         let minsAway = null;
@@ -119,6 +125,10 @@ export default function MapView() {
                                     weight: 2,
                                     fillOpacity: 0.9
                                 }}
+                                eventHandlers={{
+                                    tooltipopen: () => setOpenStopId(stop.stopId),
+                                    tooltipclose: () => setOpenStopId(id => (id === stop.stopId ? null : id)),
+                                }}
                             >
                                 <Tooltip direction="top" offset={[0, -5]} opacity={0.95}>
                                     <div className="min-w-[120px]">
@@ -130,6 +140,11 @@ export default function MapView() {
                                                 <div className="mt-1 font-mono bg-gray-100 px-1 rounded w-fit">
                                                     {minsAway !== null && minsAway <= 0 ? 'Due' : `${minsAway} min`}
                                                 </div>
+                                                <NextBusPrediction
+                                                    routeId={nextBus.route.id}
+                                                    stopId={stop.stopId}
+                                                    active={openStopId === stop.stopId}
+                                                />
                                             </div>
                                         ) : (
                                             <div className="text-xs text-gray-400 italic">No scheduled buses soon</div>

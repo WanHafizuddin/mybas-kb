@@ -250,7 +250,8 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         model_path = str(Path(tmp) / "model.json")
         booster.save_model(model_path)
-        export_model(store, args.dataset, version, model_path, metadata)
+        export_model(store, args.dataset, version, model_path, metadata,
+                     extra_json={"route_hour_avg.json": F.route_hour_lookup(table)})
     if decision.promote:
         set_current(store, args.dataset, version, decision.reason)
 

@@ -100,9 +100,12 @@ def read_metadata(store: Store, dataset: str, version: str) -> dict | None:
     return json.loads(text) if text else None
 
 
-def export_model(store: Store, dataset: str, version: str, model_path: str, metadata: dict) -> None:
+def export_model(store: Store, dataset: str, version: str, model_path: str, metadata: dict,
+                 extra_json: dict[str, object] | None = None) -> None:
     store.write_file(f"{dataset}/{version}/model.json", model_path)
     store.write_text(f"{dataset}/{version}/metadata.json", json.dumps(metadata, indent=2, default=str))
+    for name, obj in (extra_json or {}).items():
+        store.write_text(f"{dataset}/{version}/{name}", json.dumps(obj, indent=2, default=str))
 
 
 def set_current(store: Store, dataset: str, version: str, reason: str) -> None:

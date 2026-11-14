@@ -12,13 +12,15 @@ Run:
 Then browse http://localhost:8000/docs for interactive API docs.
 """
 
+import json
+import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -39,12 +41,66 @@ def get_database_url() -> str:
 
 
 pool: ConnectionPool | None = None
+log = logging.getLogger("api")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_GTFS = [
+    REPO_ROOT / "data/gtfs_static/mybas-kota-bharu/2026-08-09.zip",
+    REPO_ROOT / "data/gtfs_static/mybas-kota-bharu/2026-11-14.zip",
+]
+
+
+class ServingState:
+    """Everything /predict-delay needs, loaded once at startup. Any piece
+    can be missing: no model -> fallbacks; no GTFS -> only this endpoint
+    returns 503; the existing endpoints are never affected."""
+
+    def __init__(self):
+        self.index = None
+        self.weather = None
+        self.model = None
+        self.model_error: str | None = None
+        self.error: str | None = None
+        self.log_predictions = True
+
+    @classmethod
+    def load(cls) -> "ServingState":
+        state = cls()
+        try:
+            from basmy.gtfs_static import load_merged
+            from basmy.matching import TripIndex
+            from basmy.serving import CurrentWeather
+
+            gtfs_paths = os.environ.get("BASMY_GTFS", "").split() or DEFAULT_GTFS
+            state.index = TripIndex(load_merged(gtfs_paths))
+            state.weather = CurrentWeather()
+        except Exception as exc:  # noqa: BLE001
+            state.error = f"{type(exc).__name__}: {exc}"
+            log.error("prediction serving disabled: %s", state.error)
+            return state
+        models_uri = os.environ.get("BASMY_MODEL_URI")
+        if not models_uri:
+            state.model_error = "BASMY_MODEL_URI not set"
+        else:
+            try:
+                from basmy.serving import DelayModel
+
+                state.model = DelayModel.load(
+                    models_uri,
+                    dataset=os.environ.get("BASMY_MODEL_DATASET", "real"),
+                    allow_synthetic=os.environ.get("BASMY_ALLOW_SYNTHETIC_MODEL") == "1",
+                )
+                log.info("loaded delay model %s (%s)", state.model.version, state.model.dataset)
+            except Exception as exc:  # noqa: BLE001 -- missing model = fallbacks, never a crash
+                state.model_error = f"{type(exc).__name__}: {exc}"
+                log.warning("no delay model, using fallbacks: %s", state.model_error)
+        return state
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pool
     pool = ConnectionPool(get_database_url(), min_size=1, max_size=5, kwargs={"row_factory": dict_row})
+    app.state.serving = ServingState.load()
     yield
     pool.close()
 
@@ -151,3 +207,99 @@ def vehicle_history(
     if not rows:
         raise HTTPException(status_code=404, detail=f"no positions found for vehicle_id={vehicle_id}")
     return rows
+
+
+# --- delay prediction (Phase 5) ---------------------------------------------------------------
+
+LIVE_WINDOW_MINUTES = 15
+
+INSERT_PREDICTION_SQL = """
+    INSERT INTO delay_predictions (
+        route_id, stop_id, trip_id, vehicle_id, service_date, stop_sequence,
+        scheduled_arrival, predicted_arrival, predicted_delay_seconds, current_delay_seconds,
+        source, model_version, model_dataset, features
+    ) VALUES (
+        %(route_id)s, %(stop_id)s, %(trip_id)s, %(vehicle_id)s, %(service_date)s, %(stop_sequence)s,
+        %(scheduled_arrival)s, %(predicted_arrival)s, %(predicted_delay_seconds)s, %(current_delay_seconds)s,
+        %(source)s, %(model_version)s, %(model_dataset)s, %(features)s
+    )
+"""
+
+
+def get_serving() -> "ServingState | None":
+    return getattr(app.state, "serving", None)
+
+
+def get_live_vehicles():
+    """Latest position per vehicle seen in the last 15 minutes (same window
+    as /vehicles/current)."""
+    from basmy.serving import LiveVehicle
+
+    with pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (vehicle_id) vehicle_id, trip_id, latitude, longitude,
+                   coalesce(vehicle_timestamp, collected_at) AS seen_at
+            FROM vehicle_positions
+            WHERE vehicle_id IS NOT NULL
+              AND collected_at > now() - %(m)s * interval '1 minute'
+            ORDER BY vehicle_id, collected_at DESC
+            """,
+            {"m": LIVE_WINDOW_MINUTES},
+        )
+        return [LiveVehicle(r["vehicle_id"], r["trip_id"], r["latitude"], r["longitude"], r["seen_at"].timestamp())
+                for r in cur.fetchall()]
+
+
+def log_prediction(body: dict, state: "ServingState") -> None:
+    """Append the prediction to delay_predictions. Logging must never break
+    the endpoint: if the table does not exist yet, warn once and stop trying."""
+    if not state.log_predictions or body.get("predicted_arrival") is None:
+        return
+    import psycopg
+
+    row = {k: body.get(k) for k in (
+        "route_id", "stop_id", "trip_id", "vehicle_id", "service_date", "stop_sequence", "scheduled_arrival",
+        "predicted_arrival", "predicted_delay_seconds", "current_delay_seconds", "source",
+        "model_version", "model_dataset")}
+    row["features"] = json.dumps(body.get("features")) if body.get("features") is not None else None
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(INSERT_PREDICTION_SQL, row)
+    except psycopg.errors.UndefinedTable:
+        state.log_predictions = False
+        log.warning("delay_predictions table does not exist; prediction logging disabled "
+                    "(apply realtime/schema_predictions.sql)")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not log prediction: %s", exc)
+
+
+@app.get("/predict-delay")
+def predict_delay(
+    background_tasks: BackgroundTasks,
+    route_id: str = Query(..., description="GTFS route_id, e.g. 30425"),
+    stop_id: str = Query(..., description="GTFS stop_id, e.g. 7496"),
+    state=Depends(get_serving),
+    vehicles=Depends(get_live_vehicles),
+):
+    """Predicted arrival of the next bus on `route_id` at `stop_id`.
+
+    `source` says how it was made, in fallback order: `model` (delay model on
+    live features), `live_delay` (no model: the bus's current delay carried
+    forward), `timetable` (no live bus approaching: the next scheduled trip).
+    A missing model never makes this endpoint fail.
+    """
+    from basmy.serving import predict
+
+    if state is None or state.index is None:
+        raise HTTPException(status_code=503, detail="prediction serving unavailable")
+    try:
+        body = predict(state.index, route_id, stop_id, vehicles, datetime.now(timezone.utc),
+                       model=state.model, weather=state.weather)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0]))
+    if body["source"] != "model" and state.model is None:
+        reason = f"model unavailable ({state.model_error})"
+        body["note"] = f"{body['note']}; {reason}" if body.get("note") else reason
+    background_tasks.add_task(log_prediction, body, state)
+    return body

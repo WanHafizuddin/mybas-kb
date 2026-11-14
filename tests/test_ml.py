@@ -135,3 +135,45 @@ def test_registry_keeps_real_and_synthetic_apart(tmp_path):
     assert current_version(store, "synthetic") == "v1"
     assert current_version(store, "real") is None
     assert (tmp_path / "synthetic" / "v1" / "metadata.json").exists()
+
+
+# --- monitoring (Phase 5) ----------------------------------------------------------------
+
+def _monitor_frames(model_error_min, requested_before=True):
+    from datetime import datetime as dt
+    actual = dt(2026, 12, 14, 0, 30, tzinfo=UTC)
+    req = actual - timedelta(minutes=10) if requested_before else actual + timedelta(minutes=1)
+    preds = pd.DataFrame([
+        {"requested_at": req, "trip_id": "T1", "service_date": date(2026, 12, 14), "stop_sequence": 5,
+         "predicted_arrival": actual + timedelta(minutes=model_error_min), "source": "model", "model_version": "v1"},
+        {"requested_at": req, "trip_id": "T1", "service_date": date(2026, 12, 14), "stop_sequence": 5,
+         "predicted_arrival": actual + timedelta(minutes=3), "source": "live_delay", "model_version": None},
+        {"requested_at": req, "trip_id": "T9", "service_date": date(2026, 12, 14), "stop_sequence": 1,
+         "predicted_arrival": actual, "source": "model", "model_version": "v1"},  # no detected arrival
+    ])
+    arrivals = pd.DataFrame([{"trip_id": "T1", "service_date": date(2026, 12, 14), "stop_sequence": 5,
+                              "actual_arrival_utc": actual}])
+    return preds, arrivals
+
+
+def test_monitor_mae_per_source_and_no_alert():
+    from ml.monitor import evaluate
+    preds, arrivals = _monitor_frames(model_error_min=1.2)
+    res = evaluate(preds, arrivals, date(2026, 12, 14), {"version": "v1", "mae_minutes": {"xgboost": 1.0}})
+    assert res.n_matched == 2
+    assert res.mae_minutes_by_source == {"live_delay": 3.0, "model": 1.2}
+    assert not res.alert  # 1.2 <= 1.3
+
+
+def test_monitor_alerts_when_30_percent_worse():
+    from ml.monitor import evaluate
+    preds, arrivals = _monitor_frames(model_error_min=1.31)
+    res = evaluate(preds, arrivals, date(2026, 12, 14), {"version": "v1", "mae_minutes": {"xgboost": 1.0}})
+    assert res.alert and res.message.startswith("ALERT")
+
+
+def test_monitor_ignores_requests_made_after_the_arrival():
+    from ml.monitor import evaluate
+    preds, arrivals = _monitor_frames(model_error_min=9, requested_before=False)
+    res = evaluate(preds, arrivals, date(2026, 12, 14), {"version": "v1", "mae_minutes": {"xgboost": 1.0}})
+    assert res.n_matched == 0 and not res.alert
