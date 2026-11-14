@@ -1,0 +1,61 @@
+# Local Airflow for the basmy pipeline. From the repo root:
+#
+#   docker compose -f orchestration/docker-compose.yml up -d --build
+#   open http://localhost:8080   (local only; no login, see SIMPLE_AUTH below)
+#   docker compose -f orchestration/docker-compose.yml down
+#
+# Postgres here is a throwaway local metadata DB for Airflow; its password is
+# the standard local-dev default and protects nothing outside this machine.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 20
+
+  airflow:
+    build:
+      context: ..
+      dockerfile: orchestration/Dockerfile
+    image: basmy-airflow
+    command: standalone
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/basmy/orchestration/dags
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: utc
+      # Local only (port bound to 127.0.0.1): every visitor is admin, no login.
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      # Real raw data location. Default: the local Supabase export; in
+      # production set to gs://<bucket>/raw/vehicle_positions.
+      BASMY_REAL_RAW: ${BASMY_REAL_RAW:-/opt/basmy/data/real/raw/vehicle_positions}
+      GCP_PROJECT: ${GCP_PROJECT:-mybas-tracker-504819}
+      GOOGLE_APPLICATION_CREDENTIALS: /home/airflow/.config/gcloud/application_default_credentials.json
+      PYSPARK_SUBMIT_ARGS: >-
+        --jars /opt/spark-jars/gcs-connector.jar
+        --conf spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem
+        --conf spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS
+        --driver-memory 2g
+        pyspark-shell
+    volumes:
+      - ..:/opt/basmy
+      # gcloud application-default credentials, read-only (BigQuery / gs:// only).
+      - ${APPDATA:-~/.config}/gcloud:/home/airflow/.config/gcloud:ro
+    mem_limit: 5g
+
+volumes:
+  airflow-db:

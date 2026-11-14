@@ -15,6 +15,14 @@ dependencies = [
 [project.optional-dependencies]
 collector = ["google-cloud-storage>=2.18"]
 transform = ["pyspark==4.0.1", "pandas>=2.2", "pyarrow>=17"]
+# dbt pins protobuf < 7, and gtfs-realtime-bindings 3.x needs protobuf 7, so
+# environments with dbt use bindings 2.2 (the VM collector keeps 3.x, see
+# collector/requirements.txt; it never installs dbt).
+warehouse = [
+    "dbt-core>=1.10,<1.12", "dbt-duckdb>=1.10,<1.12", "dbt-bigquery>=1.10,<1.13",
+    "duckdb>=1.1", "google-cloud-bigquery>=3.25", "pandas>=2.2", "pyarrow>=17",
+    "gtfs-realtime-bindings>=2.2,<3",
+]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

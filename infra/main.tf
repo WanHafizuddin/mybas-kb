@@ -5,7 +5,7 @@
 #                            replacing the throttled GitHub Actions cron
 
 resource "google_project_service" "apis" {
-  for_each           = toset(["compute.googleapis.com", "storage.googleapis.com", "iam.googleapis.com", "secretmanager.googleapis.com"])
+  for_each           = toset(["compute.googleapis.com", "storage.googleapis.com", "iam.googleapis.com", "secretmanager.googleapis.com", "bigquery.googleapis.com"])
   service            = each.value
   disable_on_destroy = false
 }
@@ -126,4 +126,29 @@ resource "google_compute_instance" "collector" {
     google_storage_bucket_iam_member.collector_create_only,
     google_secret_manager_secret_iam_member.collector_reads_db_url,
   ]
+}
+
+# --- BigQuery (Phase 3 warehouse) ---------------------------------------------
+#
+# Real and synthetic data never share a dataset. *_raw holds the tables
+# warehouse/load.py loads; the dataset without suffix holds the dbt models.
+# Same location as the bucket (load jobs from gs:// require it). Always free:
+# 10 GB storage and 1 TB of queries a month; load jobs are free.
+
+locals {
+  bq_datasets = {
+    basmy_real          = "dbt models built from REAL collected data"
+    basmy_real_raw      = "Raw tables loaded from REAL data (arrivals, GTFS, weather)"
+    basmy_synthetic     = "dbt models built from SYNTHETIC test data - never report as real"
+    basmy_synthetic_raw = "Raw tables loaded from SYNTHETIC test data - never report as real"
+  }
+}
+
+resource "google_bigquery_dataset" "warehouse" {
+  for_each                   = local.bq_datasets
+  dataset_id                 = each.key
+  description                = each.value
+  location                   = var.region
+  delete_contents_on_destroy = false
+  depends_on                 = [google_project_service.apis]
 }

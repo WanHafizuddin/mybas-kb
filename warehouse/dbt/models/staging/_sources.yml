@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw tables written by warehouse/load.py. Timestamps are UTC.
+    schema: "{{ target.schema ~ '_raw' if target.type == 'bigquery' else 'raw' }}"
+    tables:
+      - name: arrivals
+        description: Phase 2 output, one row per detected stop arrival.
+      - name: routes
+      - name: stops
+      - name: trips
+      - name: weather_hourly
+        description: Open-Meteo archive, one row per weather point per UTC hour.
+      - name: weather_points
