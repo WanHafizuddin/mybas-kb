@@ -18,7 +18,7 @@ transform = ["pyspark==4.0.1", "pandas>=2.2", "pyarrow>=17"]
 test = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["basmy*", "collector*", "transform*"]
+include = ["basmy*", "collector*", "transform*", "warehouse*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

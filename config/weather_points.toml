@@ -1,0 +1,66 @@
+# Weather points for the myBAS Kota Bharu network. Each stop gets the weather
+# of its nearest point (computed in dbt: int_stop_weather_point), because the
+# routes reach up to ~150 km from Kota Bharu and rain is very local.
+#
+# point_id becomes a join key in the warehouse: never rename one once data
+# has been fetched for it; add a new point instead.
+
+[[points]]
+point_id = "kota_bharu"
+name = "Kota Bharu"
+latitude = 6.1254
+longitude = 102.2386
+
+[[points]]
+point_id = "pasir_mas"
+name = "Pasir Mas"
+latitude = 6.0493
+longitude = 102.1399
+
+[[points]]
+point_id = "tumpat"
+name = "Tumpat"
+latitude = 6.1978
+longitude = 102.1710
+
+[[points]]
+point_id = "bachok"
+name = "Bachok"
+latitude = 6.0670
+longitude = 102.3970
+
+[[points]]
+point_id = "pasir_puteh"
+name = "Pasir Puteh"
+latitude = 5.8333
+longitude = 102.4000
+
+[[points]]
+point_id = "machang"
+name = "Machang"
+latitude = 5.7633
+longitude = 102.2153
+
+[[points]]
+point_id = "tanah_merah"
+name = "Tanah Merah"
+latitude = 5.8000
+longitude = 102.1500
+
+[[points]]
+point_id = "kuala_krai"
+name = "Kuala Krai"
+latitude = 5.5310
+longitude = 102.2010
+
+[[points]]
+point_id = "jeli"
+name = "Jeli"
+latitude = 5.7000
+longitude = 101.8430
+
+[[points]]
+point_id = "gua_musang"
+name = "Gua Musang"
+latitude = 4.8800
+longitude = 101.9680
