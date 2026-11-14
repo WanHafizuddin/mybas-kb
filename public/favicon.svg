@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background tile in the app's primary blue -->
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <!-- Bus body (front view) -->
+  <rect x="14" y="10" width="36" height="40" rx="7" fill="#f8fafc"/>
+  <!-- Route sign strip -->
+  <rect x="20" y="14" width="24" height="4" rx="2" fill="#0f172a"/>
+  <!-- Windscreen -->
+  <rect x="18" y="21" width="28" height="15" rx="3" fill="#0f172a"/>
+  <!-- Headlights -->
+  <circle cx="22" cy="43" r="3" fill="#facc15"/>
+  <circle cx="42" cy="43" r="3" fill="#facc15"/>
+  <!-- Wheels -->
+  <rect x="17" y="49" width="8" height="6" rx="2" fill="#0f172a"/>
+  <rect x="39" y="49" width="8" height="6" rx="2" fill="#0f172a"/>
+</svg>
